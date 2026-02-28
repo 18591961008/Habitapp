@@ -1,47 +1,78 @@
-name: Build iOS IPA (App Store)
+name: Build iOS IPA
+
 on:
   push:
-    branches: [ master ] # 推送到main分支时触发打包
+    branches: [ master ]
   workflow_dispatch: # 支持手动触发
 
 jobs:
   build-ipa:
-    runs-on: macos-latest # GitHub 提供的云端 macOS（自带 Xcode）
+    runs-on: macos-latest
     steps:
-      - name: 拉取 Git 代码
+      - name: 拉取Git代码
         uses: actions/checkout@v4
 
       - name: 导入苹果签名证书
         env:
-          P12_FILE: ${{ secrets.P12_FILE }} # GitHub 密钥：base64 编码的 .p12
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }} # GitHub 密钥：证书密码
-          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }} # GitHub 密钥：base64 编码的描述文件
+          P12_FILE: ${{ secrets.P12_FILE }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
         run: |
-          # 解码并保存证书
-          echo $P12_FILE | base64 --decode > Cert.p12
-          # 解码并保存描述文件
-          echo $PROVISIONING_PROFILE | base64 --decode > Profile.mobileprovision
-          # 导入证书到钥匙串
-          security create-keychain -p github-actions build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p github-actions build.keychain
-          security import Cert.p12 -k build.keychain -P $P12_PASSWORD -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k github-actions build.keychain
-          # 安装描述文件
+          # 创建证书目录
+          mkdir -p ~/Library/MobileDevice/Certificates
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp Profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+          
+          # 解码并保存P12证书
+          echo "$P12_FILE" | base64 --decode > ~/Library/MobileDevice/Certificates/HabitApp.p12
+          # 解码并保存描述文件
+          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/HabitApp.mobileprovision
 
-      - name: 编译并打包 IPA
+      - name: 配置Xcode签名
         run: |
-          # 清理项目
-          xcodebuild clean -project HabitApp.xcodeproj -scheme HabitApp -configuration Release
-          # 归档（生成 .xcarchive）
-          # xcodebuild archive -project HabitApp.xcodeproj -scheme HabitApp -configuration Release -archivePath ./HabitApp.xcarchive
-          # 导出 IPA（使用你的 exportOptions.plist）
-          xcodebuild -exportArchive -archivePath ./HabitApp.xcarchive -exportPath ./IPA -exportOptionsPlist ./exportOptions.plist
+          # 查看可用的Xcode版本
+          xcode-select -p
+          # 设置签名模式为手动
+          xcodebuild -project HabitApp.xcodeproj -scheme HabitApp -configuration Release \
+          CODE_SIGN_IDENTITY="iPhone Distribution" \
+          PROVISIONING_PROFILE_SPECIFIER="HabitApp"
 
-      - name: 上传 IPA 作为构建产物
+      - name: 清理并归档（核心步骤，修复archive not found）
+        run: |
+          xcodebuild clean -project HabitApp.xcodeproj -scheme HabitApp -configuration Release
+          # 强制归档，指定签名和输出路径
+          xcodebuild archive -project HabitApp.xcodeproj -scheme HabitApp -configuration Release \
+          -archivePath ./HabitApp.xcarchive \
+          CODE_SIGN_IDENTITY="iPhone Distribution" \
+          PROVISIONING_PROFILE_SPECIFIER="HabitApp" \
+          DEVELOPMENT_TEAM="你的苹果开发者团队ID" # 替换为你的团队ID（可在App Store Connect查看）
+
+      - name: 导出IPA
+        run: |
+          # 创建导出目录
+          mkdir -p ./IPA
+          # 导出IPA，自动匹配签名
+          xcodebuild -exportArchive -archivePath ./HabitApp.xcarchive \
+          -exportPath ./IPA \
+          -exportOptionsPlist <(cat << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string> <!-- 测试用改为ad-hoc -->
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>stripSwiftSymbols</key>
+              <true/>
+              <key>teamID</key>
+              <string>你的苹果开发者团队ID</string> <!-- 替换为真实团队ID -->
+          </dict>
+          </plist>
+          EOF
+          )
+
+      - name: 上传IPA作为产物
         uses: actions/upload-artifact@v4
         with:
           name: HabitApp-IPA
-          path: ./IPA/HabitApp.ipa # 导出的 IPA 路径（和你的项目名称一致）
+          path: ./IPA/*.ipa
