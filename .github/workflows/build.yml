@@ -36,7 +36,7 @@ jobs:
           # 清理项目
           xcodebuild clean -project HabitApp.xcodeproj -scheme HabitApp -configuration Release
           # 归档（生成 .xcarchive）
-          xcodebuild archive -project HabitApp.xcodeproj -scheme HabitApp -configuration Release -archivePath ./HabitApp.xcarchive
+          # xcodebuild archive -project HabitApp.xcodeproj -scheme HabitApp -configuration Release -archivePath ./HabitApp.xcarchive
           # 导出 IPA（使用你的 exportOptions.plist）
           xcodebuild -exportArchive -archivePath ./HabitApp.xcarchive -exportPath ./IPA -exportOptionsPlist ./exportOptions.plist
 
