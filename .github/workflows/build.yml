@@ -11,9 +11,6 @@ jobs:
       - name: 拉取 Git 代码
         uses: actions/checkout@v4
 
-      - name: 配置 Xcode 版本
-        run: sudo xcode-select -switch /Applications/Xcode_15.2.app # 适配最新 Xcode
-
       - name: 导入苹果签名证书
         env:
           P12_FILE: ${{ secrets.P12_FILE }} # GitHub 密钥：base64 编码的 .p12
