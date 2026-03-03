@@ -12,19 +12,15 @@ jobs:
       - name: 拉取Git代码
         uses: actions/checkout@v4
 
+      # 修正：将官方证书导入Action作为独立步骤
       - name: 导入苹果签名证书
-        env:
-          P12_FILE: ${{ secrets.P12_FILE }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
-        run: |
-          # 官方证书导入Action（比手动更稳定，自动处理钥匙串）
-          uses: apple-actions/import-codesign-certs@v2
-          with:
-            p12-filebase64: ${{ secrets.P12_FILE }}
-            p12-password: ${{ secrets.P12_PASSWORD }}
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-filebase64: ${{ secrets.P12_FILE }}
+          p12-password: ${{ secrets.P12_PASSWORD }}
 
-          # 安装描述文件
+      - name: 安装描述文件
+        run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
 
