@@ -1,0 +1,182 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1D6058900D05DD3D006BFB54 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D60588F0D05DD3D006BFB54 /* AppDelegate.swift */; };
+		1D6058920D05DD3D006BFB54 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6058910D05DD3D006BFB54 /* ViewController.swift */; };
+		1D6058940D05DD3D006BFB54 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6058930D05DD3D006BFB54 /* main.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1D60588F0D05DD3D006BFB54 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		1D6058910D05DD3D006BFB54 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		1D6058930D05DD3D006BFB54 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		1D6058850D05DD3D006BFB54 /* YourApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YourApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		1D6058860D05DD3D006BFB54 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1D6058850D05DD3D006BFB54 /* YourApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1D60588A0D05DD3D006BFB54 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				1D60588F0D05DD3D006BFB54 /* AppDelegate.swift */,
+				1D6058910D05DD3D006BFB54 /* ViewController.swift */,
+				1D6058930D05DD3D006BFB54 /* main.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		1D6058820D05DD3D006BFB54 /* Project object */ = {
+			isa = PBXGroup;
+			children = (
+				1D60588A0D05DD3D006BFB54 /* Sources */,
+				1D6058860D05DD3D006BFB54 /* Products */,
+			);
+			sourceTree = "<absolute>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1D6058840D05DD3D006BFB54 /* YourApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1D6058950D05DD3D006BFB54 /* Build configuration list for PBXNativeTarget "YourApp" */;
+			buildPhases = (
+				1D6058870D05DD3D006BFB54 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Habitapp; // 替换为你的App名称
+			productName = Habitapp; // 替换为你的App名称
+			productReference = 1D6058850D05DD3D006BFB54 /* YourApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1D6058830D05DD3D006BFB54 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1520;
+				ORGANIZATIONNAME = "Your Company"; // 替换为你的公司名称（任意）
+				TargetAttributes = {
+					1D6058840D05DD3D006BFB54 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 1D60588E0D05DD3D006BFB54 /* Build configuration list for PBXProject "YourApp" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 1D6058820D05DD3D006BFB54 /* Project object */;
+			productRefGroup = 1D6058860D05DD3D006BFB54 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1D6058840D05DD3D006BFB54 /* YourApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1D6058870D05DD3D006BFB54 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1D6058900D05DD3D006BFB54 /* AppDelegate.swift in Sources */,
+				1D6058920D05DD3D006BFB54 /* ViewController.swift in Sources */,
+				1D6058940D05DD3D006BFB54 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1D6058960D05DD3D006BFB54 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 6GMTCJDKPM; // 替换为苹果开发者团队ID
+				ENABLE_BITCODE = NO;
+				INFOPLIST_FILE = Sources/Info.plist; // 需在Sources下创建Info.plist
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0; // 最低支持iOS版本
+				PRODUCT_BUNDLE_IDENTIFIER = com.yourapp.name; // 替换为你的Bundle ID
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.9; // 你的Swift版本
+			};
+			name = Debug;
+		};
+		1D6058970D05DD3D006BFB54 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Distribution";
+				DEVELOPMENT_TEAM = 6GMTCJDKPM; // 替换为苹果开发者团队ID
+				ENABLE_BITCODE = NO;
+				INFOPLIST_FILE = Sources/Info.plist; // 需在Sources下创建Info.plist
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yourapp.name; // 替换为你的Bundle ID
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		1D60588C0D05DD3D006BFB54 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		1D60588D05DD3D006BFB54 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SDKROOT = iphoneos;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1D6058950D05DD3D006BFB54 /* Build configuration list for PBXNativeTarget "YourApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1D6058960D05DD3D006BFB54 /* Debug */,
+				1D6058970D05DD3D006BFB54 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1D60588E0D05DD3D006BFB54 /* Build configuration list for PBXProject "YourApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1D60588C0D05DD3D006BFB54 /* Debug */,
+				1D60588D05DD3D006BFB54 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 1D6058830D05DD3D006BFB54 /* Project object */;
+}

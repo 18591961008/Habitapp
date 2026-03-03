@@ -22,36 +22,40 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Certificates
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           
-          # 解码并保存P12证书
-          echo "$P12_FILE" | base64 --decode > ~/Library/MobileDevice/Certificates/HabitApp.p12
-          # 解码并保存描述文件
-          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/HabitApp.mobileprovision
+          # 解码并保存P12证书（名称改为和工程一致）
+          echo "$P12_FILE" | base64 --decode > ~/Library/MobileDevice/Certificates/YourApp.p12
+          # 解码并保存描述文件（名称改为和工程一致）
+          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/YourApp.mobileprovision
 
       - name: 配置Xcode签名
         run: |
           # 查看可用的Xcode版本
           xcode-select -p
-          # 设置签名模式为手动
-          xcodebuild -project HabitApp.xcodeproj -scheme HabitApp -configuration Release \
+          # 适配手动创建的YourApp.xcodeproj工程
+          xcodebuild -project YourApp.xcodeproj -scheme YourApp -configuration Release \
           CODE_SIGN_IDENTITY="iPhone Distribution" \
-          PROVISIONING_PROFILE_SPECIFIER="HabitApp"
+          PROVISIONING_PROFILE_SPECIFIER="Habitapp" # 替换为你的描述文件真实名称
 
       - name: 清理并归档（核心步骤，修复archive not found）
         run: |
-          xcodebuild clean -project HabitApp.xcodeproj -scheme HabitApp -configuration Release
-          # 强制归档，指定签名和输出路径
-          xcodebuild archive -project HabitApp.xcodeproj -scheme HabitApp -configuration Release \
-          -archivePath ./HabitApp.xcarchive \
+          # 适配手动创建的工程：清理命令
+          xcodebuild clean -project YourApp.xcodeproj -scheme YourApp -configuration Release
+          # 强制归档，适配手动工程+补充必要配置
+          xcodebuild archive -project YourApp.xcodeproj -scheme YourApp -configuration Release \
+          -archivePath ./YourApp.xcarchive \
           CODE_SIGN_IDENTITY="iPhone Distribution" \
-          PROVISIONING_PROFILE_SPECIFIER="HabitApp" \
-          DEVELOPMENT_TEAM="你的苹果开发者团队ID" # 替换为你的团队ID（可在App Store Connect查看）
+          PROVISIONING_PROFILE_SPECIFIER="Habitapp" \ # 替换为你的描述文件真实名称
+          DEVELOPMENT_TEAM="6GMTCJDKPM" \ # 【必填】替换为你的苹果开发者团队ID
+          IPHONEOS_DEPLOYMENT_TARGET=15.0 \ # 适配手动工程的最低iOS版本
+          SWIFT_VERSION=5.9 \ # 适配手动工程的Swift版本
+          PRODUCT_BUNDLE_IDENTIFIER=com.yourapp.name # 【必填】替换为你的Bundle ID
 
       - name: 导出IPA
         run: |
           # 创建导出目录
           mkdir -p ./IPA
-          # 导出IPA，自动匹配签名
-          xcodebuild -exportArchive -archivePath ./HabitApp.xcarchive \
+          # 导出IPA，适配手动工程
+          xcodebuild -exportArchive -archivePath ./YourApp.xcarchive \
           -exportPath ./IPA \
           -exportOptionsPlist <(cat << EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -65,7 +69,12 @@ jobs:
               <key>stripSwiftSymbols</key>
               <true/>
               <key>teamID</key>
-              <string>你的苹果开发者团队ID</string> <!-- 替换为真实团队ID -->
+              <string>6GMTCJDKPM</string> <!-- 【必填】替换为你的苹果开发者团队ID -->
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.hupanfeng.habit-tracker</key> <!-- 【必填】替换为你的Bundle ID -->
+                  <string>Habitapp</string> <!-- 替换为你的描述文件真实名称 -->
+              </dict>
           </dict>
           </plist>
           EOF
@@ -74,5 +83,5 @@ jobs:
       - name: 上传IPA作为产物
         uses: actions/upload-artifact@v4
         with:
-          name: HabitApp-IPA
+          name: YourApp-IPA # 适配手动工程的IPA产物名称
           path: ./IPA/*.ipa
