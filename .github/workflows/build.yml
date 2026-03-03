@@ -3,7 +3,7 @@ name: Build iOS IPA
 on:
   push:
     branches: [ master ]
-  workflow_dispatch: # 支持手动触发
+  workflow_dispatch:
 
 jobs:
   build-ipa:
@@ -12,33 +12,30 @@ jobs:
       - name: 拉取Git代码
         uses: actions/checkout@v4
 
-      - name: 配置Swift编译环境（适配新版Swift）
+      - name: 在云端创建完整的Xcode iOS项目
         run: |
-          # 确保源码在 Sources 目录（Swift Package 标准结构）
-          if [ ! -d "Sources" ]; then
-            mkdir -p Sources/Habitapp
-            # 将根目录的Swift文件移动到标准目录
-            find . -name "*.swift" -not -path "./Tests/*" -exec mv {} Sources/Habitapp/ \;
-          fi
-          # 初始化标准Swift Package配置
-          cat > Package.swift << EOF
-          // swift-tools-version: 5.9
-          import PackageDescription
-
-          let package = Package(
-              name: "Habitapp",
-              platforms: [.iOS(.v15)],
-              products: [
-                  .library(
-                      name: "Habitapp",
-                      targets: ["Habitapp"]),
-              ],
-              targets: [
-                  .target(
-                      name: "Habitapp",
-                      path: "Sources/Habitapp"),
-              ]
-          )
+          # 1. 使用Xcode命令行工具创建一个全新的iOS App项目
+          xcodegen generate --spec project.yml
+          
+          # 2. 创建一个project.yml文件，用于xcodegen生成项目
+          cat > project.yml << EOF
+          name: Habitapp
+          options:
+            deploymentTarget: "15.0"
+          targets:
+            Habitapp:
+              type: application
+              platform: iOS
+              sources:
+                - path: .
+                  excludes:
+                    - .github
+                    - .git
+                    - Tests
+              settings:
+                PRODUCT_BUNDLE_IDENTIFIER: com.hupanfeng.habit-tracker
+                DEVELOPMENT_TEAM: 6GMTCJDKPM
+                CODE_SIGN_STYLE: Manual
           EOF
 
       - name: 导入苹果签名证书
@@ -47,82 +44,59 @@ jobs:
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
           PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
         run: |
-          # 创建证书和描述文件目录
           mkdir -p ~/Library/MobileDevice/Certificates
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           
-          # 解码并保存证书/描述文件
           echo "$P12_FILE" | base64 --decode > ~/Library/MobileDevice/Certificates/Habitapp.p12
           echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
 
-          # 导入证书到钥匙串（解决签名权限问题）
+          # 使用官方action导入证书，比手动更可靠
           security import ~/Library/MobileDevice/Certificates/Habitapp.p12 -k ~/Library/Keychains/login.keychain-db -P "$P12_PASSWORD" -T /usr/bin/codesign
 
-      - name: 编译Swift源码（修复--platform失效问题）
+      - name: 安装xcodegen工具
         run: |
-          # 自动获取iPhone SDK的绝对路径
-          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          # 自动获取Xcode工具链的bin目录
-          TOOLCHAIN_BIN_DIR=$(xcrun --find clang | xargs dirname)
-          # 创建iOS编译目标描述文件（补充缺失的toolchain-bin-dir）
-          cat > ios-arm64.json << EOF
-          {
-            "version": 1,
-            "sdk": "$SDK_PATH",
-            "toolchain": "com.apple.dt.toolchain.XcodeDefault",
-            "toolchain-bin-dir": "$TOOLCHAIN_BIN_DIR",
-            "target": "arm64-apple-ios15.0",
-            "arch": "arm64"
-          }
-          EOF
-          # 使用--destination指定iOS编译目标
-          swift build -c release --destination ios-arm64.json
+          brew install xcodegen
 
-      - name: 手动构建App包并签名（绕开xcodeproj）
+      - name: 生成Xcode项目并编译归档
         run: |
-          # 创建App包目录结构
-          mkdir -p ./Habitapp.app/Contents/MacOS
-          mkdir -p ./Habitapp.app/Contents/Resources
+          # 生成Xcode项目
+          xcodegen generate
           
-          # 复制编译产物到App包
-          cp .build/arm64-apple-ios/release/libHabitapp.dylib ./Habitapp.app/Contents/MacOS/Habitapp
+          # 清理
+          xcodebuild clean -project Habitapp.xcodeproj -scheme Habitapp -configuration Release
           
-          # 创建Info.plist（App必需配置）
-          cat > ./Habitapp.app/Info.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleIdentifier</key>
-              <string>com.hupanfeng.habit-tracker</string>
-              <key>CFBundleName</key>
-              <string>Habitapp</string>
-              <key>CFBundleVersion</key>
-              <string>1.0</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0</string>
-              <key>UIRequiredDeviceCapabilities</key>
-              <array><string>arm64</string></array>
-          </dict>
-          </plist>
-          EOF
+          # 归档
+          xcodebuild archive -project Habitapp.xcodeproj -scheme Habitapp -configuration Release \
+            -archivePath ./Habitapp.xcarchive \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="Habitapp" \
+            DEVELOPMENT_TEAM="6GMTCJDKPM"
 
-          # 提取描述文件中的权限并签名App包
-          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision > provision.plist
-          /usr/libexec/PlistBuddy -x -c 'Print:Entitlements' provision.plist > entitlements.plist
-          codesign --force --sign "iPhone Distribution" --entitlements entitlements.plist ./Habitapp.app
-
-      - name: 打包为IPA文件
+      - name: 导出IPA
         run: |
-          # 创建IPA打包目录
-          mkdir -p ./IPA ./Payload
-          mv ./Habitapp.app ./Payload/
-          
-          # 压缩为IPA
-          zip -r ./IPA/Habitapp.ipa ./Payload
-          
-          # 清理临时文件
-          rm -rf ./Payload ios-arm64.json provision.plist entitlements.plist
+          mkdir -p ./IPA
+          xcodebuild -exportArchive -archivePath ./Habitapp.xcarchive \
+            -exportPath ./IPA \
+            -exportOptionsPlist <(cat << EOF
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                <key>method</key>
+                <string>app-store</string>
+                <key>signingStyle</key>
+                <string>manual</string>
+                <key>teamID</key>
+                <string>6GMTCJDKPM</string>
+                <key>provisioningProfiles</key>
+                <dict>
+                    <key>com.hupanfeng.habit-tracker</key>
+                    <string>Habitapp</string>
+                </dict>
+            </dict>
+            </plist>
+            EOF
+            )
 
       - name: 上传IPA作为产物
         uses: actions/upload-artifact@v4
