@@ -12,7 +12,6 @@ jobs:
       - name: 拉取Git代码
         uses: actions/checkout@v4
 
-      # 修正：使用正确的参数名 p12-file-base64
       - name: 导入苹果签名证书
         uses: apple-actions/import-codesign-certs@v2
         with:
@@ -24,38 +23,13 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
 
-      - name: 云端创建标准iOS App Xcode工程（官方模板）
+      - name: 编译归档（使用仓库中已有的完整项目）
         run: |
-          # 1. 创建工程目录（避免路径冲突）
-          mkdir -p ./HabitappProject
-          cd ./HabitappProject
-
-          # 2. 用Xcode官方模板创建iOS App工程（自动生成完整xcodeproj）
-          xcodebuild -create-project \
-            -name Habitapp \
-            -template iOS \
-            -language Swift \
-            -project Habitapp.xcodeproj \
-            -target Habitapp \
-            -bundleIdentifier com.hupanfeng.habit-tracker
-
-          # 3. 将仓库根目录的Swift源码复制到工程的源码目录
-          mkdir -p ./Habitapp
-          cp -r ../*.swift ./Habitapp/ 2>/dev/null || echo "无额外源码，使用模板默认代码"
-
-          # 4. 编辑工程配置，添加源码文件（确保xcodebuild能识别）
-          xcodebuild -project Habitapp.xcodeproj \
-            -target Habitapp \
-            -add-file ./Habitapp/*.swift 2>/dev/null || true
-
-      - name: 编译归档（官方工程，绝对兼容）
-        run: |
-          cd ./HabitappProject
           # 清理
           xcodebuild clean -project Habitapp.xcodeproj -scheme Habitapp -configuration Release
-          # 归档（自动匹配签名和描述文件）
+          # 归档
           xcodebuild archive -project Habitapp.xcodeproj -scheme Habitapp -configuration Release \
-            -archivePath ../Habitapp.xcarchive \
+            -archivePath ./Habitapp.xcarchive \
             DEVELOPMENT_TEAM=6GMTCJDKPM \
             PROVISIONING_PROFILE_SPECIFIER=Habitapp \
             CODE_SIGN_IDENTITY="iPhone Distribution"
@@ -63,7 +37,6 @@ jobs:
       - name: 导出IPA
         run: |
           mkdir -p ./IPA
-          # 导出IPA（官方标准配置）
           xcodebuild -exportArchive -archivePath ./Habitapp.xcarchive \
             -exportPath ./IPA \
             -exportOptionsPlist <(cat << EOF
