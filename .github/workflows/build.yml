@@ -62,12 +62,15 @@ jobs:
         run: |
           # 自动获取iPhone SDK的绝对路径
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          # 创建iOS编译目标描述文件（使用绝对路径）
+          # 自动获取Xcode工具链的bin目录
+          TOOLCHAIN_BIN_DIR=$(xcrun --find clang | xargs dirname)
+          # 创建iOS编译目标描述文件（补充缺失的toolchain-bin-dir）
           cat > ios-arm64.json << EOF
           {
             "version": 1,
             "sdk": "$SDK_PATH",
             "toolchain": "com.apple.dt.toolchain.XcodeDefault",
+            "toolchain-bin-dir": "$TOOLCHAIN_BIN_DIR",
             "target": "arm64-apple-ios15.0",
             "arch": "arm64"
           }
