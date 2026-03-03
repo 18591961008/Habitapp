@@ -17,10 +17,10 @@ jobs:
           # 确保源码在 Sources 目录（Swift Package 标准结构）
           if [ ! -d "Sources" ]; then
             mkdir -p Sources/Habitapp
-            # 将根目录的Swift文件移动到标准目录（根据你的源码位置调整，若已在Sources则删除此段）
+            # 将根目录的Swift文件移动到标准目录
             find . -name "*.swift" -not -path "./Tests/*" -exec mv {} Sources/Habitapp/ \;
           fi
-          # 初始化标准Swift Package（覆盖旧配置）
+          # 初始化标准Swift Package配置
           cat > Package.swift << EOF
           // swift-tools-version: 5.9
           import PackageDescription
@@ -58,19 +58,29 @@ jobs:
           # 导入证书到钥匙串（解决签名权限问题）
           security import ~/Library/MobileDevice/Certificates/Habitapp.p12 -k ~/Library/Keychains/login.keychain-db -P "$P12_PASSWORD" -T /usr/bin/codesign
 
-      - name: 编译Swift源码（新版Swift原生编译）
+      - name: 编译Swift源码（修复--platform失效问题）
         run: |
-          # 编译为iOS真机架构（arm64）
-          swift build -c release --arch arm64 --platform ios
+          # 创建iOS编译目标描述文件（替代--platform）
+          cat > ios-arm64.json << EOF
+          {
+            "version": 1,
+            "sdk": "iphoneos",
+            "toolchain": "com.apple.dt.toolchain.XcodeDefault",
+            "target": "arm64-apple-ios15.0",
+            "arch": "arm64"
+          }
+          EOF
+          # 使用--destination指定iOS编译目标
+          swift build -c release --destination ios-arm64.json
 
-      - name: 手动构建App包并签名（核心：绕开xcodeproj）
+      - name: 手动构建App包并签名（绕开xcodeproj）
         run: |
           # 创建App包目录结构
           mkdir -p ./Habitapp.app/Contents/MacOS
           mkdir -p ./Habitapp.app/Contents/Resources
           
           # 复制编译产物到App包
-          cp .build/arm64-ios/release/libHabitapp.dylib ./Habitapp.app/Contents/MacOS/Habitapp
+          cp .build/arm64-apple-ios/release/libHabitapp.dylib ./Habitapp.app/Contents/MacOS/Habitapp
           
           # 创建Info.plist（App必需配置）
           cat > ./Habitapp.app/Info.plist << EOF
@@ -92,20 +102,22 @@ jobs:
           </plist>
           EOF
 
-          # 对App包进行签名（使用导入的证书和描述文件）
-          codesign --force --sign "iPhone Distribution" --entitlements <(security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision | plutil -extract Entitlements xml1 -o - -) ./Habitapp.app
+          # 提取描述文件中的权限并签名App包
+          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision > provision.plist
+          /usr/libexec/PlistBuddy -x -c 'Print:Entitlements' provision.plist > entitlements.plist
+          codesign --force --sign "iPhone Distribution" --entitlements entitlements.plist ./Habitapp.app
 
       - name: 打包为IPA文件
         run: |
           # 创建IPA打包目录
-          mkdir -p ./Payload
+          mkdir -p ./IPA ./Payload
           mv ./Habitapp.app ./Payload/
           
           # 压缩为IPA
           zip -r ./IPA/Habitapp.ipa ./Payload
           
           # 清理临时文件
-          rm -rf ./Payload
+          rm -rf ./Payload ios-arm64.json provision.plist entitlements.plist
 
       - name: 上传IPA作为产物
         uses: actions/upload-artifact@v4
