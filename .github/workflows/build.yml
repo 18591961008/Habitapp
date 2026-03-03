@@ -12,6 +12,20 @@ jobs:
       - name: 拉取Git代码
         uses: actions/checkout@v4
 
+      # 新增：自动生成完整的Xcode工程（解决手动工程损坏问题）
+      - name: 自动生成完整Habitapp.xcodeproj工程
+        run: |
+          # 初始化Swift Package（确保工程可被Xcode识别）
+          if [ ! -f "Package.swift" ]; then
+            swift package init --type library --name Habitapp
+          fi
+          # 生成合法的Habitapp.xcodeproj工程文件（覆盖损坏的手动工程）
+          swift package generate-xcodeproj --name Habitapp
+          # 验证工程文件是否生成成功
+          ls -la Habitapp.xcodeproj
+          # 修复Scheme名称（自动生成的Scheme为Habitapp-Package，同步到后续命令）
+          sed -i '' 's/-scheme Habitapp/-scheme Habitapp-Package/g' $GITHUB_WORKSPACE/.github/workflows/build.yml || true
+
       - name: 导入苹果签名证书
         env:
           P12_FILE: ${{ secrets.P12_FILE }}
@@ -31,17 +45,17 @@ jobs:
         run: |
           # 查看可用的Xcode版本
           xcode-select -p
-          # 适配手动创建的YourApp.xcodeproj工程
-          xcodebuild -project Habitapp.xcodeproj -scheme Habitapp -configuration Release \
+          # 使用自动生成的工程Scheme：Habitapp-Package
+          xcodebuild -project Habitapp.xcodeproj -scheme Habitapp-Package -configuration Release \
           CODE_SIGN_IDENTITY="iPhone Distribution" \
           PROVISIONING_PROFILE_SPECIFIER="Habitapp"
 
       - name: 清理并归档（核心步骤，修复archive not found）
         run: |
-          # 适配手动创建的工程：清理命令
-          xcodebuild clean -project Habitapp.xcodeproj -scheme Habitapp -configuration Release
-          # 强制归档，适配手动工程+补充必要配置
-          xcodebuild archive -project Habitapp.xcodeproj -scheme Habitapp -configuration Release \
+          # 适配自动生成的工程：清理命令
+          xcodebuild clean -project Habitapp.xcodeproj -scheme Habitapp-Package -configuration Release
+          # 强制归档，适配自动生成工程+补充必要配置
+          xcodebuild archive -project Habitapp.xcodeproj -scheme Habitapp-Package -configuration Release \
           -archivePath ./Habitapp.xcarchive \
           CODE_SIGN_IDENTITY="iPhone Distribution" \
           PROVISIONING_PROFILE_SPECIFIER="Habitapp" \
@@ -54,7 +68,7 @@ jobs:
         run: |
           # 创建导出目录
           mkdir -p ./IPA
-          # 导出IPA，适配手动工程
+          # 导出IPA，适配自动生成工程
           xcodebuild -exportArchive -archivePath ./Habitapp.xcarchive \
           -exportPath ./IPA \
           -exportOptionsPlist <(cat << EOF
