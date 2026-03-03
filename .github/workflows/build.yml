@@ -12,11 +12,11 @@ jobs:
       - name: 拉取Git代码
         uses: actions/checkout@v4
 
-      # 修正：将官方证书导入Action作为独立步骤
+      # 修正：使用正确的参数名 p12-file-base64
       - name: 导入苹果签名证书
         uses: apple-actions/import-codesign-certs@v2
         with:
-          p12-filebase64: ${{ secrets.P12_FILE }}
+          p12-file-base64: ${{ secrets.P12_FILE }}
           p12-password: ${{ secrets.P12_PASSWORD }}
 
       - name: 安装描述文件
