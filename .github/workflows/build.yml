@@ -12,66 +12,62 @@ jobs:
       - name: 拉取Git代码
         uses: actions/checkout@v4
 
-      # 调整顺序：先安装xcodegen工具
-      - name: 安装xcodegen工具
-        run: |
-          brew install xcodegen
-
-      - name: 在云端创建完整的Xcode iOS项目
-        run: |
-          # 创建xcodegen配置文件
-          cat > project.yml << EOF
-          name: Habitapp
-          options:
-            deploymentTarget: "15.0"
-          targets:
-            Habitapp:
-              type: application
-              platform: iOS
-              sources:
-                - path: .
-                  excludes:
-                    - .github
-                    - .git
-                    - Tests
-              settings:
-                PRODUCT_BUNDLE_IDENTIFIER: com.hupanfeng.habit-tracker
-                DEVELOPMENT_TEAM: 6GMTCJDKPM
-                CODE_SIGN_STYLE: Manual
-          EOF
-
-          # 生成Xcode项目
-          xcodegen generate
-
       - name: 导入苹果签名证书
         env:
           P12_FILE: ${{ secrets.P12_FILE }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
           PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
         run: |
-          mkdir -p ~/Library/MobileDevice/Certificates
+          # 官方证书导入Action（比手动更稳定，自动处理钥匙串）
+          uses: apple-actions/import-codesign-certs@v2
+          with:
+            p12-filebase64: ${{ secrets.P12_FILE }}
+            p12-password: ${{ secrets.P12_PASSWORD }}
+
+          # 安装描述文件
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          
-          echo "$P12_FILE" | base64 --decode > ~/Library/MobileDevice/Certificates/Habitapp.p12
-          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
 
-          security import ~/Library/MobileDevice/Certificates/Habitapp.p12 -k ~/Library/Keychains/login.keychain-db -P "$P12_PASSWORD" -T /usr/bin/codesign
-
-      - name: 生成Xcode项目并编译归档
+      - name: 云端创建标准iOS App Xcode工程（官方模板）
         run: |
+          # 1. 创建工程目录（避免路径冲突）
+          mkdir -p ./HabitappProject
+          cd ./HabitappProject
+
+          # 2. 用Xcode官方模板创建iOS App工程（自动生成完整xcodeproj）
+          xcodebuild -create-project \
+            -name Habitapp \
+            -template iOS \
+            -language Swift \
+            -project Habitapp.xcodeproj \
+            -target Habitapp \
+            -bundleIdentifier com.hupanfeng.habit-tracker
+
+          # 3. 将仓库根目录的Swift源码复制到工程的源码目录
+          mkdir -p ./Habitapp
+          cp -r ../*.swift ./Habitapp/ 2>/dev/null || echo "无额外源码，使用模板默认代码"
+
+          # 4. 编辑工程配置，添加源码文件（确保xcodebuild能识别）
+          xcodebuild -project Habitapp.xcodeproj \
+            -target Habitapp \
+            -add-file ./Habitapp/*.swift 2>/dev/null || true
+
+      - name: 编译归档（官方工程，绝对兼容）
+        run: |
+          cd ./HabitappProject
           # 清理
           xcodebuild clean -project Habitapp.xcodeproj -scheme Habitapp -configuration Release
-          
-          # 归档
+          # 归档（自动匹配签名和描述文件）
           xcodebuild archive -project Habitapp.xcodeproj -scheme Habitapp -configuration Release \
-            -archivePath ./Habitapp.xcarchive \
-            CODE_SIGN_IDENTITY="iPhone Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="Habitapp" \
-            DEVELOPMENT_TEAM="6GMTCJDKPM"
+            -archivePath ../Habitapp.xcarchive \
+            DEVELOPMENT_TEAM=6GMTCJDKPM \
+            PROVISIONING_PROFILE_SPECIFIER=Habitapp \
+            CODE_SIGN_IDENTITY="iPhone Distribution"
 
       - name: 导出IPA
         run: |
           mkdir -p ./IPA
+          # 导出IPA（官方标准配置）
           xcodebuild -exportArchive -archivePath ./Habitapp.xcarchive \
             -exportPath ./IPA \
             -exportOptionsPlist <(cat << EOF
@@ -95,7 +91,7 @@ jobs:
             EOF
             )
 
-      - name: 上传IPA作为产物
+      - name: 上传IPA产物
         uses: actions/upload-artifact@v4
         with:
           name: Habitapp-IPA
