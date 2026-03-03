@@ -23,26 +23,26 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           
           # 解码并保存P12证书（匹配你的工程命名）
-          echo "$P12_FILE" | base64 --decode > ~/Library/MobileDevice/Certificates/YourApp.p12
+          echo "$P12_FILE" | base64 --decode > ~/Library/MobileDevice/Certificates/Habitapp.p12
           # 解码并保存描述文件（匹配你的工程命名）
-          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/YourApp.mobileprovision
+          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
 
       - name: 配置Xcode签名
         run: |
           # 查看可用的Xcode版本
           xcode-select -p
           # 适配手动创建的YourApp.xcodeproj工程
-          xcodebuild -project YourApp.xcodeproj -scheme YourApp -configuration Release \
+          xcodebuild -project Habitapp.xcodeproj -scheme Habitapp -configuration Release \
           CODE_SIGN_IDENTITY="iPhone Distribution" \
           PROVISIONING_PROFILE_SPECIFIER="Habitapp"
 
       - name: 清理并归档（核心步骤，修复archive not found）
         run: |
           # 适配手动创建的工程：清理命令
-          xcodebuild clean -project YourApp.xcodeproj -scheme YourApp -configuration Release
+          xcodebuild clean -project Habitapp.xcodeproj -scheme Habitapp -configuration Release
           # 强制归档，适配手动工程+补充必要配置
-          xcodebuild archive -project YourApp.xcodeproj -scheme YourApp -configuration Release \
-          -archivePath ./YourApp.xcarchive \
+          xcodebuild archive -project Habitapp.xcodeproj -scheme Habitapp -configuration Release \
+          -archivePath ./Habitapp.xcarchive \
           CODE_SIGN_IDENTITY="iPhone Distribution" \
           PROVISIONING_PROFILE_SPECIFIER="Habitapp" \
           DEVELOPMENT_TEAM="6GMTCJDKPM" \
@@ -55,7 +55,7 @@ jobs:
           # 创建导出目录
           mkdir -p ./IPA
           # 导出IPA，适配手动工程
-          xcodebuild -exportArchive -archivePath ./YourApp.xcarchive \
+          xcodebuild -exportArchive -archivePath ./Habitapp.xcarchive \
           -exportPath ./IPA \
           -exportOptionsPlist <(cat << EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -83,5 +83,5 @@ jobs:
       - name: 上传IPA作为产物
         uses: actions/upload-artifact@v4
         with:
-          name: YourApp-IPA
+          name: Habitapp-IPA
           path: ./IPA/*.ipa
