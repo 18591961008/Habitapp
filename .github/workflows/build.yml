@@ -22,9 +22,9 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Certificates
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           
-          # 解码并保存P12证书（名称改为和工程一致）
+          # 解码并保存P12证书（匹配你的工程命名）
           echo "$P12_FILE" | base64 --decode > ~/Library/MobileDevice/Certificates/YourApp.p12
-          # 解码并保存描述文件（名称改为和工程一致）
+          # 解码并保存描述文件（匹配你的工程命名）
           echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/YourApp.mobileprovision
 
       - name: 配置Xcode签名
@@ -34,7 +34,7 @@ jobs:
           # 适配手动创建的YourApp.xcodeproj工程
           xcodebuild -project YourApp.xcodeproj -scheme YourApp -configuration Release \
           CODE_SIGN_IDENTITY="iPhone Distribution" \
-          PROVISIONING_PROFILE_SPECIFIER="Habitapp" # 替换为你的描述文件真实名称
+          PROVISIONING_PROFILE_SPECIFIER="Habitapp"
 
       - name: 清理并归档（核心步骤，修复archive not found）
         run: |
@@ -44,11 +44,11 @@ jobs:
           xcodebuild archive -project YourApp.xcodeproj -scheme YourApp -configuration Release \
           -archivePath ./YourApp.xcarchive \
           CODE_SIGN_IDENTITY="iPhone Distribution" \
-          PROVISIONING_PROFILE_SPECIFIER="Habitapp" \ # 替换为你的描述文件真实名称
-          DEVELOPMENT_TEAM="6GMTCJDKPM" \ # 【必填】替换为你的苹果开发者团队ID
-          IPHONEOS_DEPLOYMENT_TARGET=15.0 \ # 适配手动工程的最低iOS版本
-          SWIFT_VERSION=5.9 \ # 适配手动工程的Swift版本
-          PRODUCT_BUNDLE_IDENTIFIER=com.yourapp.name # 【必填】替换为你的Bundle ID
+          PROVISIONING_PROFILE_SPECIFIER="Habitapp" \
+          DEVELOPMENT_TEAM="6GMTCJDKPM" \
+          IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+          SWIFT_VERSION=5.9 \
+          PRODUCT_BUNDLE_IDENTIFIER=com.hupanfeng.habit-tracker
 
       - name: 导出IPA
         run: |
@@ -69,11 +69,11 @@ jobs:
               <key>stripSwiftSymbols</key>
               <true/>
               <key>teamID</key>
-              <string>6GMTCJDKPM</string> <!-- 【必填】替换为你的苹果开发者团队ID -->
+              <string>6GMTCJDKPM</string>
               <key>provisioningProfiles</key>
               <dict>
-                  <key>com.hupanfeng.habit-tracker</key> <!-- 【必填】替换为你的Bundle ID -->
-                  <string>Habitapp</string> <!-- 替换为你的描述文件真实名称 -->
+                  <key>com.hupanfeng.habit-tracker</key>
+                  <string>Habitapp</string>
               </dict>
           </dict>
           </plist>
@@ -83,5 +83,5 @@ jobs:
       - name: 上传IPA作为产物
         uses: actions/upload-artifact@v4
         with:
-          name: YourApp-IPA # 适配手动工程的IPA产物名称
+          name: YourApp-IPA
           path: ./IPA/*.ipa
