@@ -12,12 +12,14 @@ jobs:
       - name: 拉取Git代码
         uses: actions/checkout@v4
 
+      # 调整顺序：先安装xcodegen工具
+      - name: 安装xcodegen工具
+        run: |
+          brew install xcodegen
+
       - name: 在云端创建完整的Xcode iOS项目
         run: |
-          # 1. 使用Xcode命令行工具创建一个全新的iOS App项目
-          xcodegen generate --spec project.yml
-          
-          # 2. 创建一个project.yml文件，用于xcodegen生成项目
+          # 创建xcodegen配置文件
           cat > project.yml << EOF
           name: Habitapp
           options:
@@ -38,6 +40,9 @@ jobs:
                 CODE_SIGN_STYLE: Manual
           EOF
 
+          # 生成Xcode项目
+          xcodegen generate
+
       - name: 导入苹果签名证书
         env:
           P12_FILE: ${{ secrets.P12_FILE }}
@@ -50,18 +55,10 @@ jobs:
           echo "$P12_FILE" | base64 --decode > ~/Library/MobileDevice/Certificates/Habitapp.p12
           echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
 
-          # 使用官方action导入证书，比手动更可靠
           security import ~/Library/MobileDevice/Certificates/Habitapp.p12 -k ~/Library/Keychains/login.keychain-db -P "$P12_PASSWORD" -T /usr/bin/codesign
-
-      - name: 安装xcodegen工具
-        run: |
-          brew install xcodegen
 
       - name: 生成Xcode项目并编译归档
         run: |
-          # 生成Xcode项目
-          xcodegen generate
-          
           # 清理
           xcodebuild clean -project Habitapp.xcodeproj -scheme Habitapp -configuration Release
           
