@@ -1,9 +1,9 @@
-name: Build iOS IPA (Swift Package 最终版)
+name: Build iOS IPA & Upload TestFlight
 
 on:
   push:
     branches: [ master ]
-  workflow_dispatch: # 支持手动触发
+  workflow_dispatch:
 
 jobs:
   build-ipa:
@@ -12,12 +12,10 @@ jobs:
       - name: 拉取Git代码
         uses: actions/checkout@v4
 
-      - name: 清理旧的工程文件（关键修复）
+      - name: 清理旧的工程文件
         run: |
-          # 删除所有残留的 .xcodeproj 和 .xcworkspace 文件，找不到也不报错
           find . -name "*.xcodeproj" -exec rm -rf {} \; 2>/dev/null || true
           find . -name "*.xcworkspace" -exec rm -rf {} \; 2>/dev/null || true
-          # 删除可能存在的旧编译缓存
           rm -rf ./build ./DerivedData 2>/dev/null || true
 
       - name: 导入苹果签名证书
@@ -33,12 +31,10 @@ jobs:
 
       - name: 配置Swift Package并生成App入口
         run: |
-          # 1. 初始化Swift Package（如果不存在）
           if [ ! -f "Package.swift" ]; then
             swift package init --type library --name Habitapp 2>/dev/null || true
           fi
 
-          # 2. 重写Package.swift，声明为iOS App
           cat > Package.swift << EOF
           // swift-tools-version: 5.9
           import PackageDescription
@@ -59,7 +55,6 @@ jobs:
           )
           EOF
 
-          # 3. 生成SwiftUI App入口文件（解决@main缺失问题）
           mkdir -p Sources/Habitapp
           cat > Sources/Habitapp/App.swift << EOF
           import SwiftUI
@@ -74,35 +69,62 @@ jobs:
           }
           EOF
 
-          # 4. 将你的源码复制到Package目录（找不到文件也不报错）
           find . -name "*.swift" -not -path "./Sources/*" -exec cp {} Sources/Habitapp/ \; 2>/dev/null || true
+
+          VERSION=$(git rev-list --count HEAD)
+          cat > Sources/Habitapp/Info.plist << PLIST_EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleIdentifier</key>
+              <string>com.hupanfeng.habit-tracker</string>
+              <key>CFBundleName</key>
+              <string>极简习惯追踪</string>
+              <key>CFBundleVersion</key>
+              <string>$VERSION</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.$VERSION</string>
+              <key>CFBundleExecutable</key>
+              <string>Habitapp</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>UIRequiredDeviceCapabilities</key>
+              <array><string>arm64</string></array>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST_EOF
+
+      - name: 缓存Swift Package依赖
+        uses: actions/cache@v3
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftpm-${{ hashFiles('Package.swift') }}
 
       - name: 编译并生成App
         run: |
-          # 使用通用的iOS模拟器占位符，自动匹配任意可用设备
           xcodebuild build -scheme Habitapp -destination 'platform=iOS Simulator,id=dvtdevice-DVTiPhoneSimulatorPlaceholder-iphonesimulator:placeholder' -configuration Release -UsePackageSwiftBuildSystem=1 2>/dev/null || true
 
-          # 找到编译产物并复制到Payload目录（兼容不同Xcode版本的路径）
           BUILD_DIR=$(xcodebuild -showBuildSettings -scheme Habitapp | grep "BUILD_DIR" | cut -d= -f2 | xargs)
           APP_PATH="$BUILD_DIR/Release-iphonesimulator/Habitapp.app"
           if [ -d "$APP_PATH" ]; then
             mkdir -p Payload
             cp -r "$APP_PATH" Payload/
           else
-            # 备用路径：适配新版Xcode的编译产物位置
             APP_PATH=".build/arm64-apple-ios-simulator/release/Habitapp.app"
             mkdir -p Payload
             cp -r "$APP_PATH" Payload/ 2>/dev/null || true
           fi
 
-          # 重新签名（适配真机，签名失败不中断流程）
           codesign --force --deep --sign "iPhone Distribution" --entitlements ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision Payload/Habitapp.app 2>/dev/null || true
 
       - name: 打包为IPA
         run: |
-          # 压缩为标准IPA格式
           zip -r Habitapp.ipa Payload 2>/dev/null || true
-          # 移动到IPA目录供上传
           mkdir -p IPA
           mv Habitapp.ipa IPA/ 2>/dev/null || true
 
@@ -111,3 +133,13 @@ jobs:
         with:
           name: Habitapp-IPA
           path: ./IPA/*.ipa
+
+      # 新增：自动上传到 TestFlight
+      - name: 上传到 TestFlight
+        uses: apple-actions/upload-testflight-build@v2
+        with:
+          app-identifier: com.hupanfeng.habit-tracker
+          ipa-path: ./IPA/Habitapp.ipa
+          issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          api-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          api-private-key: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
