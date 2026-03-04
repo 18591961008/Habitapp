@@ -12,13 +12,17 @@ jobs:
       - name: 拉取Git代码
         uses: actions/checkout@v4
 
+# ... 前面的步骤保持不变 ...
+
       - name: 清理旧的工程文件（关键修复）
         run: |
-          # 删除所有残留的 .xcodeproj 和 .xcworkspace 文件
-          find . -name "*.xcodeproj" -exec rm -rf {} \;
-          find . -name "*.xcworkspace" -exec rm -rf {} \;
+          # 删除所有残留的 .xcodeproj 和 .xcworkspace 文件，找不到也不报错
+          find . -name "*.xcodeproj" -exec rm -rf {} \; 2>/dev/null || true
+          find . -name "*.xcworkspace" -exec rm -rf {} \; 2>/dev/null || true
           # 删除可能存在的旧编译缓存
-          rm -rf ./build ./DerivedData
+          rm -rf ./build ./DerivedData 2>/dev/null || true
+
+# ... 后面的步骤保持不变 ...
 
       - name: 导入苹果签名证书
         uses: apple-actions/import-codesign-certs@v2
