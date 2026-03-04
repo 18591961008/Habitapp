@@ -127,6 +127,8 @@ jobs:
           zip -r Habitapp.ipa Payload 2>/dev/null || true
           mkdir -p IPA
           mv Habitapp.ipa IPA/ 2>/dev/null || true
+          # 打印IPA路径，用于调试
+          echo "IPA 文件路径: $(find ${{ github.workspace }} -name "*.ipa")"
 
       - name: 上传IPA产物
         uses: actions/upload-artifact@v4
@@ -134,12 +136,12 @@ jobs:
           name: Habitapp-IPA
           path: ./IPA/*.ipa
 
-      # 新增：自动上传到 TestFlight
+      # 修复后的上传步骤
       - name: 上传到 TestFlight
         uses: apple-actions/upload-testflight-build@v2
         with:
           app-identifier: com.hupanfeng.habit-tracker
-          ipa-path: ./IPA/Habitapp.ipa
+          ipa-path: ${{ github.workspace }}/IPA/Habitapp.ipa
           issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           api-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           api-private-key: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
