@@ -1,251 +1,380 @@
-# 4. 生成正确的 project.pbxproj，明确为 iOS App
-cat > Habitapp.xcodeproj/project.pbxproj << 'EOF'
-// !$*UTF8*$!
-{
-    archiveVersion = 1;
-    classes = {
-    };
-    objectVersion = 56;
-    objects = {
+name: Build iOS IPA (Final Stable Version)
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
 
-        /* Begin PBXBuildFile section */
-        1 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2 /* App.swift */; };
-        3 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4 /* Info.plist */; };
-        /* End PBXBuildFile section */
+jobs:
+  build-ipa:
+    runs-on: macos-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
 
-        /* Begin PBXFileReference section */
-        2 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Classes/App.swift; sourceTree = SOURCE_ROOT; };
-        4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Resources/Info.plist; sourceTree = SOURCE_ROOT; };
-        5 /* Habitapp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Habitapp.app; sourceTree = BUILT_PRODUCTS_DIR; };
-        /* End PBXFileReference section */
+      - name: 清理旧产物
+        run: |
+          rm -rf Habitapp.xcodeproj Habitapp build IPA Payload 2>/dev/null || true
 
-        /* Begin PBXFrameworksBuildPhase section */
-        6 /* Frameworks */ = {
-            isa = PBXFrameworksBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
-        /* End PBXFrameworksBuildPhase section */
+      - name: 导入签名证书
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-file-base64: ${{ secrets.P12_FILE }}
+          p12-password: ${{ secrets.P12_PASSWORD }}
 
-        /* Begin PBXGroup section */
-        7 /* Project */ = {
-            isa = PBXGroup;
-            children = (
-                8 /* Habitapp */,
-                9 /* Products */,
-            );
-            sourceTree = "<group>";
-        };
-        8 /* Habitapp */ = {
-            isa = PBXGroup;
-            children = (
-                10 /* Classes */,
-                11 /* Resources */,
-            );
-            path = Habitapp;
-            sourceTree = "<group>";
-        };
-        10 /* Classes */ = {
-            isa = PBXGroup;
-            children = (
-                2 /* App.swift */,
-            );
-            path = Classes;
-            sourceTree = "<group>";
-        };
-        11 /* Resources */ = {
-            isa = PBXGroup;
-            children = (
-                4 /* Info.plist */,
-            );
-            path = Resources;
-            sourceTree = "<group>";
-        };
-        9 /* Products */ = {
-            isa = PBXGroup;
-            children = (
-                5 /* Habitapp.app */,
-            );
-            name = Products;
-            sourceTree = BUILT_PRODUCTS_DIR;
-        };
-        /* End PBXGroup section */
+      - name: 安装描述文件
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
 
-        /* Begin PBXNativeTarget section */
-        12 /* Habitapp */ = {
-            isa = PBXNativeTarget;
-            buildConfigurationList = 13 /* Build configuration list for PBXNativeTarget "Habitapp" */;
-            buildPhases = (
-                14 /* Sources */,
-                6 /* Frameworks */,
-                15 /* Resources */,
-            );
-            buildRules = (
-            );
-            dependencies = (
-            );
-            name = Habitapp;
-            productName = Habitapp;
-            productReference = 5 /* Habitapp.app */;
-            productType = "com.apple.product-type.application";
-        };
-        /* End PBXNativeTarget section */
+      - name: 生成标准 Xcode 工程（核心修复）
+        run: |
+          # 1. 创建基础目录结构（顺序不可改）
+          mkdir -p Habitapp/Classes
+          mkdir -p Habitapp/Resources
+          mkdir -p Habitapp.xcodeproj
 
-        /* Begin PBXProject section */
-        16 /* Project object */ = {
-            isa = PBXProject;
-            attributes = {
-                LastUpgradeCheck = 1600;
-                ORGANIZATIONNAME = "YourOrg";
-                TargetAttributes = {
-                    12 = {
-                        CreatedOnToolsVersion = 16.0;
-                        ProvisioningStyle = Manual;
-                    };
-                };
-            };
-            buildConfigurationList = 17 /* Build configuration list for PBXProject "Habitapp" */;
-            compatibilityVersion = "Xcode 15.0";
-            developmentRegion = en;
-            hasScannedForEncodings = 0;
-            knownRegions = (
-                en,
-                Base,
-            );
-            mainGroup = 7 /* Project */;
-            productRefGroup = 9 /* Products */;
-            projectDirPath = "";
-            projectRoot = "";
-            targets = (
-                12 /* Habitapp */,
-            );
-        };
-        /* End PBXProject section */
+          # 2. 生成 Info.plist（单引号屏蔽变量解析）
+          cat > Habitapp/Resources/Info.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>$(EXECUTABLE_NAME)</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.yourteam.Habitapp</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>MinimumOSVersion</key>
+              <string>15.0</string>
+              <key>UIApplicationSceneManifest</key>
+              <dict>
+                  <key>UIApplicationSupportsMultipleScenes</key>
+                  <false/>
+              </dict>
+          </dict>
+          </plist>
+          EOF
 
-        /* Begin PBXResourcesBuildPhase section */
-        15 /* Resources */ = {
-            isa = PBXResourcesBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-                3 /* Info.plist in Resources */,
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
-        /* End PBXResourcesBuildPhase section */
+          # 3. 生成 App 入口代码
+          cat > Habitapp/Classes/App.swift << 'EOF'
+          import UIKit
+          @main
+          class HabitappApp: UIResponder, UIApplicationDelegate {
+              var window: UIWindow?
+              func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+                  window = UIWindow(frame: UIScreen.main.bounds)
+                  window?.rootViewController = UIViewController()
+                  window?.rootViewController?.view.backgroundColor = .white
+                  window?.makeKeyAndVisible()
+                  return true
+              }
+          }
+          EOF
 
-        /* Begin PBXSourcesBuildPhase section */
-        14 /* Sources */ = {
-            isa = PBXSourcesBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-                1 /* App.swift in Sources */,
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
-        /* End PBXSourcesBuildPhase section */
+          # 4. 生成正确的 project.pbxproj，明确为 iOS App
+          cat > Habitapp.xcodeproj/project.pbxproj << 'EOF'
+          // !$*UTF8*$!
+          {
+              archiveVersion = 1;
+              classes = {
+              };
+              objectVersion = 56;
+              objects = {
 
-        /* Begin XCBuildConfiguration section */
-        18 /* Debug */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                ALWAYS_SEARCH_USER_PATHS = NO;
-                CLANG_ANALYZER_NONNULL = YES;
-                CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-                CODE_SIGN_IDENTITY = "iPhone Distribution";
-                CODE_SIGN_STYLE = Manual;
-                DEBUG_INFORMATION_FORMAT = dwarf;
-                ENABLE_STRICT_OBJC_MSGSEND = YES;
-                GCC_C_LANGUAGE_STANDARD = gnu17;
-                GCC_NO_COMMON_BLOCKS = YES;
-                INFOPLIST_FILE = Habitapp/Resources/Info.plist;
-                IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-                LD_RUNPATH_SEARCH_PATHS = (
-                    "$(inherited)",
-                    "@executable_path/Frameworks",
-                );
-                PRODUCT_BUNDLE_IDENTIFIER = "com.yourteam.Habitapp";
-                PRODUCT_NAME = "$(TARGET_NAME)";
-                SDKROOT = iphoneos;
-                SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
-                SWIFT_VERSION = 5.0;
-                TARGETED_DEVICE_FAMILY = "1,2";
-            };
-            name = Debug;
-        };
-        19 /* Release */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                ALWAYS_SEARCH_USER_PATHS = NO;
-                CLANG_ANALYZER_NONNULL = YES;
-                CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-                CODE_SIGN_IDENTITY = "iPhone Distribution";
-                CODE_SIGN_STYLE = Manual;
-                COPY_PHASE_STRIP = NO;
-                DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-                ENABLE_NS_ASSERTIONS = NO;
-                ENABLE_STRICT_OBJC_MSGSEND = YES;
-                GCC_C_LANGUAGE_STANDARD = gnu17;
-                GCC_NO_COMMON_BLOCKS = YES;
-                INFOPLIST_FILE = Habitapp/Resources/Info.plist;
-                IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-                LD_RUNPATH_SEARCH_PATHS = (
-                    "$(inherited)",
-                    "@executable_path/Frameworks",
-                );
-                PRODUCT_BUNDLE_IDENTIFIER = "com.yourteam.Habitapp";
-                PRODUCT_NAME = "$(TARGET_NAME)";
-                SDKROOT = iphoneos;
-                SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
-                SWIFT_COMPILATION_MODE = wholemodule;
-                SWIFT_OPTIMIZATION_LEVEL = "-O";
-                SWIFT_VERSION = 5.0;
-                TARGETED_DEVICE_FAMILY = "1,2";
-                VALID_ARCHS = "arm64";
-            };
-            name = Release;
-        };
-        13 /* Build configuration list for PBXNativeTarget "Habitapp" */ = {
-            isa = XCConfigurationList;
-            buildConfigurations = (
-                18 /* Debug */,
-                19 /* Release */,
-            );
-            defaultConfigurationIsVisible = 0;
-            defaultConfigurationName = Release;
-        };
-        20 /* Debug */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                MARKETING_VERSION = 1.0;
-                PRODUCT_BUNDLE_IDENTIFIER = "com.yourteam.Habitapp";
-                SWIFT_VERSION = 5.0;
-                VERSIONING_SYSTEM = "apple-generic";
-            };
-            name = Debug;
-        };
-        21 /* Release */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                MARKETING_VERSION = 1.0;
-                PRODUCT_BUNDLE_IDENTIFIER = "com.yourteam.Habitapp";
-                SWIFT_VERSION = 5.0;
-                VERSIONING_SYSTEM = "apple-generic";
-            };
-            name = Release;
-        };
-        17 /* Build configuration list for PBXProject "Habitapp" */ = {
-            isa = XCConfigurationList;
-            buildConfigurations = (
-                20 /* Debug */,
-                21 /* Release */,
-            );
-            defaultConfigurationIsVisible = 0;
-            defaultConfigurationName = Release;
-        };
-        /* End XCBuildConfiguration section */
-    };
-    rootObject = 16 /* Project object */;
-}
-EOF
+                  /* Begin PBXBuildFile section */
+                  1 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2 /* App.swift */; };
+                  3 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4 /* Info.plist */; };
+                  /* End PBXBuildFile section */
+
+                  /* Begin PBXFileReference section */
+                  2 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Classes/App.swift; sourceTree = SOURCE_ROOT; };
+                  4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Resources/Info.plist; sourceTree = SOURCE_ROOT; };
+                  5 /* Habitapp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Habitapp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+                  /* End PBXFileReference section */
+
+                  /* Begin PBXFrameworksBuildPhase section */
+                  6 /* Frameworks */ = {
+                      isa = PBXFrameworksBuildPhase;
+                      buildActionMask = 2147483647;
+                      files = (
+                      );
+                      runOnlyForDeploymentPostprocessing = 0;
+                  };
+                  /* End PBXFrameworksBuildPhase section */
+
+                  /* Begin PBXGroup section */
+                  7 /* Project */ = {
+                      isa = PBXGroup;
+                      children = (
+                          8 /* Habitapp */,
+                          9 /* Products */,
+                      );
+                      sourceTree = "<group>";
+                  };
+                  8 /* Habitapp */ = {
+                      isa = PBXGroup;
+                      children = (
+                          10 /* Classes */,
+                          11 /* Resources */,
+                      );
+                      path = Habitapp;
+                      sourceTree = "<group>";
+                  };
+                  10 /* Classes */ = {
+                      isa = PBXGroup;
+                      children = (
+                          2 /* App.swift */,
+                      );
+                      path = Classes;
+                      sourceTree = "<group>";
+                  };
+                  11 /* Resources */ = {
+                      isa = PBXGroup;
+                      children = (
+                          4 /* Info.plist */,
+                      );
+                      path = Resources;
+                      sourceTree = "<group>";
+                  };
+                  9 /* Products */ = {
+                      isa = PBXGroup;
+                      children = (
+                          5 /* Habitapp.app */,
+                      );
+                      name = Products;
+                      sourceTree = BUILT_PRODUCTS_DIR;
+                  };
+                  /* End PBXGroup section */
+
+                  /* Begin PBXNativeTarget section */
+                  12 /* Habitapp */ = {
+                      isa = PBXNativeTarget;
+                      buildConfigurationList = 13 /* Build configuration list for PBXNativeTarget "Habitapp" */;
+                      buildPhases = (
+                          14 /* Sources */,
+                          6 /* Frameworks */,
+                          15 /* Resources */,
+                      );
+                      buildRules = (
+                      );
+                      dependencies = (
+                      );
+                      name = Habitapp;
+                      productName = Habitapp;
+                      productReference = 5 /* Habitapp.app */;
+                      productType = "com.apple.product-type.application";
+                  };
+                  /* End PBXNativeTarget section */
+
+                  /* Begin PBXProject section */
+                  16 /* Project object */ = {
+                      isa = PBXProject;
+                      attributes = {
+                          LastUpgradeCheck = 1600;
+                          ORGANIZATIONNAME = "YourOrg";
+                          TargetAttributes = {
+                              12 = {
+                                  CreatedOnToolsVersion = 16.0;
+                                  ProvisioningStyle = Manual;
+                              };
+                          };
+                      };
+                      buildConfigurationList = 17 /* Build configuration list for PBXProject "Habitapp" */;
+                      compatibilityVersion = "Xcode 15.0";
+                      developmentRegion = en;
+                      hasScannedForEncodings = 0;
+                      knownRegions = (
+                          en,
+                          Base,
+                      );
+                      mainGroup = 7 /* Project */;
+                      productRefGroup = 9 /* Products */;
+                      projectDirPath = "";
+                      projectRoot = "";
+                      targets = (
+                          12 /* Habitapp */,
+                      );
+                  };
+                  /* End PBXProject section */
+
+                  /* Begin PBXResourcesBuildPhase section */
+                  15 /* Resources */ = {
+                      isa = PBXResourcesBuildPhase;
+                      buildActionMask = 2147483647;
+                      files = (
+                          3 /* Info.plist in Resources */,
+                      );
+                      runOnlyForDeploymentPostprocessing = 0;
+                  };
+                  /* End PBXResourcesBuildPhase section */
+
+                  /* Begin PBXSourcesBuildPhase section */
+                  14 /* Sources */ = {
+                      isa = PBXSourcesBuildPhase;
+                      buildActionMask = 2147483647;
+                      files = (
+                          1 /* App.swift in Sources */,
+                      );
+                      runOnlyForDeploymentPostprocessing = 0;
+                  };
+                  /* End PBXSourcesBuildPhase section */
+
+                  /* Begin XCBuildConfiguration section */
+                  18 /* Debug */ = {
+                      isa = XCBuildConfiguration;
+                      buildSettings = {
+                          ALWAYS_SEARCH_USER_PATHS = NO;
+                          CLANG_ANALYZER_NONNULL = YES;
+                          CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+                          CODE_SIGN_IDENTITY = "iPhone Distribution";
+                          CODE_SIGN_STYLE = Manual;
+                          DEBUG_INFORMATION_FORMAT = dwarf;
+                          ENABLE_STRICT_OBJC_MSGSEND = YES;
+                          GCC_C_LANGUAGE_STANDARD = gnu17;
+                          GCC_NO_COMMON_BLOCKS = YES;
+                          INFOPLIST_FILE = Habitapp/Resources/Info.plist;
+                          IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+                          LD_RUNPATH_SEARCH_PATHS = (
+                              "$(inherited)",
+                              "@executable_path/Frameworks",
+                          );
+                          PRODUCT_BUNDLE_IDENTIFIER = "com.yourteam.Habitapp";
+                          PRODUCT_NAME = "$(TARGET_NAME)";
+                          SDKROOT = iphoneos;
+                          SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
+                          SWIFT_VERSION = 5.0;
+                          TARGETED_DEVICE_FAMILY = "1,2";
+                      };
+                      name = Debug;
+                  };
+                  19 /* Release */ = {
+                      isa = XCBuildConfiguration;
+                      buildSettings = {
+                          ALWAYS_SEARCH_USER_PATHS = NO;
+                          CLANG_ANALYZER_NONNULL = YES;
+                          CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+                          CODE_SIGN_IDENTITY = "iPhone Distribution";
+                          CODE_SIGN_STYLE = Manual;
+                          COPY_PHASE_STRIP = NO;
+                          DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+                          ENABLE_NS_ASSERTIONS = NO;
+                          ENABLE_STRICT_OBJC_MSGSEND = YES;
+                          GCC_C_LANGUAGE_STANDARD = gnu17;
+                          GCC_NO_COMMON_BLOCKS = YES;
+                          INFOPLIST_FILE = Habitapp/Resources/Info.plist;
+                          IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+                          LD_RUNPATH_SEARCH_PATHS = (
+                              "$(inherited)",
+                              "@executable_path/Frameworks",
+                          );
+                          PRODUCT_BUNDLE_IDENTIFIER = "com.yourteam.Habitapp";
+                          PRODUCT_NAME = "$(TARGET_NAME)";
+                          SDKROOT = iphoneos;
+                          SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
+                          SWIFT_COMPILATION_MODE = wholemodule;
+                          SWIFT_OPTIMIZATION_LEVEL = "-O";
+                          SWIFT_VERSION = 5.0;
+                          TARGETED_DEVICE_FAMILY = "1,2";
+                          VALID_ARCHS = "arm64";
+                      };
+                      name = Release;
+                  };
+                  13 /* Build configuration list for PBXNativeTarget "Habitapp" */ = {
+                      isa = XCConfigurationList;
+                      buildConfigurations = (
+                          18 /* Debug */,
+                          19 /* Release */,
+                      );
+                      defaultConfigurationIsVisible = 0;
+                      defaultConfigurationName = Release;
+                  };
+                  20 /* Debug */ = {
+                      isa = XCBuildConfiguration;
+                      buildSettings = {
+                          MARKETING_VERSION = 1.0;
+                          PRODUCT_BUNDLE_IDENTIFIER = "com.yourteam.Habitapp";
+                          SWIFT_VERSION = 5.0;
+                          VERSIONING_SYSTEM = "apple-generic";
+                      };
+                      name = Debug;
+                  };
+                  21 /* Release */ = {
+                      isa = XCBuildConfiguration;
+                      buildSettings = {
+                          MARKETING_VERSION = 1.0;
+                          PRODUCT_BUNDLE_IDENTIFIER = "com.yourteam.Habitapp";
+                          SWIFT_VERSION = 5.0;
+                          VERSIONING_SYSTEM = "apple-generic";
+                      };
+                      name = Release;
+                  };
+                  17 /* Build configuration list for PBXProject "Habitapp" */ = {
+                      isa = XCConfigurationList;
+                      buildConfigurations = (
+                          20 /* Debug */,
+                          21 /* Release */,
+                      );
+                      defaultConfigurationIsVisible = 0;
+                      defaultConfigurationName = Release;
+                  };
+                  /* End XCBuildConfiguration section */
+              };
+              rootObject = 16 /* Project object */;
+          }
+          EOF
+
+      - name: 编译归档（无 workspace，直接用 project）
+        run: |
+          # 提取 Team ID（兼容证书输出格式）
+          TEAM_ID=$(security find-identity -v -p codesigning | grep "iPhone Distribution" | head -n1 | awk '{print $2}' | cut -d'"' -f2)
+          if [ -z "$TEAM_ID" ]; then echo "❌ 未找到签名证书"; exit 1; fi
+
+          # 执行归档（核心：用 -project 而非 -workspace）
+          xcodebuild archive \
+            -project Habitapp.xcodeproj \
+            -scheme Habitapp \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -archivePath ./build/Habitapp.xcarchive \
+            DEVELOPMENT_TEAM=$TEAM_ID \
+            PROVISIONING_PROFILE_SPECIFIER=Habitapp \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="iPhone Distribution"
+
+      - name: 导出 IPA
+        run: |
+          # 生成极简 ExportOptions
+          cat > ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>ad-hoc</string>
+              <key>teamID</key>
+              <string>$(security find-identity -v -p codesigning | grep "iPhone Distribution" | head -n1 | awk '{print $2}' | cut -d'"' -f2)</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.yourteam.Habitapp</key>
+                  <string>Habitapp</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+
+          # 导出 IPA
+          xcodebuild -exportArchive \
+            -archivePath ./build/Habitapp.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath ./IPA
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: Habitapp-IPA
+          path: ./IPA/*.ipa
