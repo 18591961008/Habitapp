@@ -1,4 +1,4 @@
-name: Build iOS IPA & Upload TestFlight
+name: Build iOS Archive & Upload to TestFlight
 
 on:
   push:
@@ -105,38 +105,33 @@ jobs:
             ~/Library/Caches/org.swift.swiftpm
           key: ${{ runner.os }}-swiftpm-${{ hashFiles('Package.swift') }}
 
-      - name: 编译并生成App
+      # 关键修复：生成真正的 Archive（而非模拟器构建）
+      - name: 生成 iOS Archive (Generic iOS Device)
         run: |
-          xcodebuild build -scheme Habitapp -destination 'platform=iOS Simulator,id=dvtdevice-DVTiPhoneSimulatorPlaceholder-iphonesimulator:placeholder' -configuration Release -UsePackageSwiftBuildSystem=1 2>/dev/null || true
+          xcodebuild archive \
+            -scheme Habitapp \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            -archivePath ${{ github.workspace }}/build/Habitapp.xcarchive \
+            -UsePackageSwiftBuildSystem=1 \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="Habitapp"
 
-          BUILD_DIR=$(xcodebuild -showBuildSettings -scheme Habitapp | grep "BUILD_DIR" | cut -d= -f2 | xargs)
-          APP_PATH="$BUILD_DIR/Release-iphonesimulator/Habitapp.app"
-          if [ -d "$APP_PATH" ]; then
-            mkdir -p Payload
-            cp -r "$APP_PATH" Payload/
-          else
-            APP_PATH=".build/arm64-apple-ios-simulator/release/Habitapp.app"
-            mkdir -p Payload
-            cp -r "$APP_PATH" Payload/ 2>/dev/null || true
-          fi
-
-          codesign --force --deep --sign "iPhone Distribution" --entitlements ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision Payload/Habitapp.app 2>/dev/null || true
-
-      - name: 打包为IPA
+      # 从 Archive 导出适合 TestFlight 的 IPA
+      - name: 导出 TestFlight IPA
         run: |
-          zip -r Habitapp.ipa Payload 2>/dev/null || true
-          mkdir -p IPA
-          mv Habitapp.ipa IPA/ 2>/dev/null || true
-          # 打印IPA路径，用于调试
-          echo "IPA 文件路径: $(find ${{ github.workspace }} -name "*.ipa")"
+          xcodebuild -exportArchive \
+            -archivePath ${{ github.workspace }}/build/Habitapp.xcarchive \
+            -exportPath ${{ github.workspace }}/IPA \
+            -exportOptionsPlist <(echo '{"method":"app-store","signingStyle":"manual"}')
 
       - name: 上传IPA产物
         uses: actions/upload-artifact@v4
         with:
-          name: Habitapp-IPA
+          name: Habitapp-TestFlight-IPA
           path: ./IPA/*.ipa
 
-      # 修复后的上传步骤
+      # 上传到 TestFlight
       - name: 上传到 TestFlight
         uses: apple-actions/upload-testflight-build@v2
         with:
