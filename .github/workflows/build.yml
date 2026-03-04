@@ -1,4 +1,4 @@
-name: Build iOS IPA (SwiftUI 官方工程版)
+name: Build iOS IPA (Swift Package 版)
 
 on:
   push:
@@ -23,60 +23,71 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
 
-      - name: 云端创建SwiftUI App工程
+      - name: 配置Swift Package并生成App入口
         run: |
-          # 1. 创建工程目录
-          mkdir -p ./HabitappProject
-          cd ./HabitappProject
+          # 1. 初始化Swift Package（如果不存在）
+          if [ ! -f "Package.swift" ]; then
+            swift package init --type library --name Habitapp
+          fi
 
-          # 2. 使用Xcode官方模板创建SwiftUI App
-          xcodebuild -create-project \
-            -name Habitapp \
-            -template iOS \
-            -language Swift \
-            -ui SwiftUI \
-            -project Habitapp.xcodeproj \
-            -target Habitapp \
-            -bundleIdentifier com.hupanfeng.habit-tracker
+          # 2. 重写Package.swift，声明为iOS App
+          cat > Package.swift << EOF
+          // swift-tools-version: 5.9
+          import PackageDescription
 
-          # 3. 用你的代码替换默认代码
-          find ../ -name "*.swift" -exec cp {} ./Habitapp/ \;
+          let package = Package(
+              name: "Habitapp",
+              platforms: [.iOS(.v15)],
+              products: [
+                  .executable(name: "Habitapp", targets: ["Habitapp"])
+              ],
+              dependencies: [
+                  .package(url: "https://github.com/apple/swiftui.git", from: "4.0.0")
+              ],
+              targets: [
+                  .executableTarget(
+                      name: "Habitapp",
+                      dependencies: [.product(name: "SwiftUI", package: "swiftui")],
+                      path: "Sources/Habitapp"
+                  )
+              ]
+          )
+          EOF
 
-      - name: 编译归档
+          # 3. 生成SwiftUI App入口文件（解决@main缺失问题）
+          mkdir -p Sources/Habitapp
+          cat > Sources/Habitapp/App.swift << EOF
+          import SwiftUI
+
+          @main
+          struct HabitappApp: App {
+              var body: some Scene {
+                  WindowGroup {
+                      ContentView()
+                  }
+              }
+          }
+          EOF
+
+      - name: 编译并生成App
         run: |
-          cd ./HabitappProject
-          xcodebuild clean -project Habitapp.xcodeproj -scheme Habitapp -configuration Release
-          xcodebuild archive -project Habitapp.xcodeproj -scheme Habitapp -configuration Release \
-            -archivePath ../Habitapp.xcarchive \
-            DEVELOPMENT_TEAM=6GMTCJDKPM \
-            PROVISIONING_PROFILE_SPECIFIER=Habitapp \
-            CODE_SIGN_IDENTITY="iPhone Distribution"
+          # 使用xcodebuild直接编译Swift Package
+          xcodebuild build -scheme Habitapp -destination 'platform=iOS Simulator,name=iPhone 15' -configuration Release
 
-      - name: 导出IPA
+          # 找到编译产物并复制到Payload目录
+          BUILD_DIR=$(xcodebuild -showBuildSettings -scheme Habitapp | grep "BUILD_DIR" | cut -d= -f2 | xargs)
+          APP_PATH="$BUILD_DIR/Release-iphonesimulator/Habitapp.app"
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+
+          # 重新签名（适配真机）
+          codesign --force --deep --sign "iPhone Distribution" --entitlements ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision Payload/Habitapp.app
+
+      - name: 打包为IPA
         run: |
-          mkdir -p ./IPA
-          xcodebuild -exportArchive -archivePath ./Habitapp.xcarchive \
-            -exportPath ./IPA \
-            -exportOptionsPlist <(cat << EOF
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-                <key>method</key>
-                <string>app-store</string>
-                <key>signingStyle</key>
-                <string>manual</string>
-                <key>teamID</key>
-                <string>6GMTCJDKPM</string>
-                <key>provisioningProfiles</key>
-                <dict>
-                    <key>com.hupanfeng.habit-tracker</key>
-                    <string>Habitapp</string>
-                </dict>
-            </dict>
-            </plist>
-            EOF
-            )
+          zip -r Habitapp.ipa Payload
+          mkdir -p IPA
+          mv Habitapp.ipa IPA/
 
       - name: 上传IPA产物
         uses: actions/upload-artifact@v4
