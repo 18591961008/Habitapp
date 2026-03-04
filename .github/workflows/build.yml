@@ -12,6 +12,14 @@ jobs:
       - name: 拉取Git代码
         uses: actions/checkout@v4
 
+      - name: 清理旧的工程文件（关键修复）
+        run: |
+          # 删除所有残留的 .xcodeproj 和 .xcworkspace 文件
+          find . -name "*.xcodeproj" -exec rm -rf {} \;
+          find . -name "*.xcworkspace" -exec rm -rf {} \;
+          # 删除可能存在的旧编译缓存
+          rm -rf ./build ./DerivedData
+
       - name: 导入苹果签名证书
         uses: apple-actions/import-codesign-certs@v2
         with:
@@ -41,13 +49,10 @@ jobs:
               products: [
                   .executable(name: "Habitapp", targets: ["Habitapp"])
               ],
-              dependencies: [
-                  .package(url: "https://github.com/apple/swiftui.git", from: "4.0.0")
-              ],
+              dependencies: [],
               targets: [
                   .executableTarget(
                       name: "Habitapp",
-                      dependencies: [.product(name: "SwiftUI", package: "swiftui")],
                       path: "Sources/Habitapp"
                   )
               ]
@@ -69,10 +74,13 @@ jobs:
           }
           EOF
 
+          # 4. 将你的源码复制到Package目录
+          find . -name "*.swift" -not -path "./Sources/*" -exec cp {} Sources/Habitapp/ \;
+
       - name: 编译并生成App
         run: |
-          # 使用xcodebuild直接编译Swift Package
-          xcodebuild build -scheme Habitapp -destination 'platform=iOS Simulator,name=iPhone 15' -configuration Release
+          # 使用xcodebuild直接编译Swift Package，明确指定使用Package
+          xcodebuild build -scheme Habitapp -destination 'platform=iOS Simulator,name=iPhone 15' -configuration Release -UsePackageSwiftBuildSystem=1
 
           # 找到编译产物并复制到Payload目录
           BUILD_DIR=$(xcodebuild -showBuildSettings -scheme Habitapp | grep "BUILD_DIR" | cut -d= -f2 | xargs)
