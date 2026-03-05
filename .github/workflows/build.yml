@@ -1,4 +1,4 @@
-name: Build iOS IPA (Automatic Signing)
+name: Build iOS IPA (Manual Signing - Final)
 on:
   push:
     branches: [master]
@@ -19,7 +19,7 @@ jobs:
         run: |
           brew install xcodegen
 
-      - name: 生成项目配置文件 (project.yml) - 启用自动签名
+      - name: 生成项目配置文件 (project.yml) - 明确手动签名
         run: |
           cat > project.yml << 'EOF'
           name: Habitapp
@@ -35,9 +35,10 @@ jobs:
               settings:
                 INFOPLIST_FILE: Habitapp/Resources/Info.plist
                 PRODUCT_BUNDLE_IDENTIFIER: com.hupanfeng.habit-tracker
-                # 关键：启用自动签名
-                CODE_SIGN_STYLE: Automatic
+                CODE_SIGN_IDENTITY: "iPhone Distribution"
+                CODE_SIGN_STYLE: Manual
                 DEVELOPMENT_TEAM: 6GMTCJDKPM
+                PROVISIONING_PROFILE: ""
           EOF
 
       - name: 生成 Info.plist (自动递增版本号)
@@ -101,19 +102,48 @@ jobs:
           p12-file-base64: ${{ secrets.P12_FILE }}
           p12-password: ${{ secrets.P12_PASSWORD }}
 
-      - name: 编译归档 (自动签名)
+      - name: 安装描述文件
         run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          # 先安装到临时文件，提取UUID
+          TEMP_PROFILE=$(mktemp).mobileprovision
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$TEMP_PROFILE"
+          # 提取UUID
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< $(security cms -D -i "$TEMP_PROFILE"))
+          # 按UUID重命名，这是Xcode识别的标准方式
+          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+          mv "$TEMP_PROFILE" "$PROFILE_PATH"
+          echo "描述文件已安装到: $PROFILE_PATH"
+          echo "描述文件UUID: $PROFILE_UUID"
+
+      - name: 编译归档 (明确指定签名和描述文件)
+        run: |
+          # 先获取描述文件UUID
+          TEMP_PROFILE=$(mktemp).mobileprovision
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$TEMP_PROFILE"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< $(security cms -D -i "$TEMP_PROFILE"))
+          rm -f "$TEMP_PROFILE"
+
           xcodebuild archive \
             -project Habitapp.xcodeproj \
             -scheme Habitapp \
             -destination 'generic/platform=iOS' \
             -archivePath ./build/Habitapp.xcarchive \
             -configuration Release \
-            -allowProvisioningUpdates \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            DEVELOPMENT_TEAM=6GMTCJDKPM \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            ALLOW_TARGET_PLATFORM_SPECIALIZATION=NO \
             -verbose
 
-      - name: 生成导出配置文件 (自动签名)
+      - name: 生成导出配置文件 (明确指定签名和描述文件)
         run: |
+          # 先获取描述文件UUID
+          TEMP_PROFILE=$(mktemp).mobileprovision
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$TEMP_PROFILE"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< $(security cms -D -i "$TEMP_PROFILE"))
+          rm -f "$TEMP_PROFILE"
+
           cat > ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <plist version="1.0">
@@ -122,8 +152,15 @@ jobs:
               <string>ad-hoc</string>
               <key>teamID</key>
               <string>6GMTCJDKPM</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.hupanfeng.habit-tracker</key>
+                  <string>$PROFILE_UUID</string>
+              </dict>
+              <key>signingCertificate</key>
+              <string>iPhone Distribution</string>
               <key>signingStyle</key>
-              <string>automatic</key>
+              <string>manual</string>
               <key>stripSwiftSymbols</key>
               <true/>
               <key>uploadBitcode</key>
@@ -136,11 +173,18 @@ jobs:
 
       - name: 导出 IPA
         run: |
+          # 先获取描述文件UUID
+          TEMP_PROFILE=$(mktemp).mobileprovision
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$TEMP_PROFILE"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< $(security cms -D -i "$TEMP_PROFILE"))
+          rm -f "$TEMP_PROFILE"
+
           xcodebuild -exportArchive \
             -archivePath ./build/Habitapp.xcarchive \
             -exportOptionsPlist ExportOptions.plist \
             -exportPath ./IPA \
-            -allowProvisioningUpdates \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
             -verbose
 
       - name: 上传 IPA 产物
