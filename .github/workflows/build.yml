@@ -25,6 +25,7 @@ jobs:
           name: Habitapp
           options:
             minimumDeploymentTarget: 15.0
+            developmentTeam: 6GMTCJDKPM
           targets:
             Habitapp:
               type: application
@@ -33,16 +34,18 @@ jobs:
                 - Habitapp/Classes
               settings:
                 INFOPLIST_FILE: Habitapp/Resources/Info.plist
-                PRODUCT_BUNDLE_IDENTIFIER: com.yourteam.Habitapp # 替换为你的真实Bundle ID
+                PRODUCT_BUNDLE_IDENTIFIER: com.hupanfeng.habit-tracker # 统一为你的真实Bundle ID
                 CODE_SIGN_IDENTITY: "iPhone Distribution"
                 CODE_SIGN_STYLE: Manual
-                DEVELOPMENT_TEAM: 6GMTCJDKPM # 替换为你的Team ID
+                DEVELOPMENT_TEAM: 6GMTCJDKPM # 固定Team ID
+                PROVISIONING_PROFILE_SPECIFIER: "" # 清空硬编码，自动匹配
           EOF
 
-      - name: 生成 Info.plist
+      - name: 生成 Info.plist (自动递增版本号)
         run: |
           mkdir -p Habitapp/Resources
-          cat > Habitapp/Resources/Info.plist << 'EOF'
+          VERSION=$(git rev-list --count HEAD) # 用Git提交次数作为版本号
+          cat > Habitapp/Resources/Info.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -52,9 +55,11 @@ jobs:
               <key>CFBundleIdentifier</key>
               <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
               <key>CFBundleVersion</key>
-              <string>1</string>
+              <string>$VERSION</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.0</string>
+              <string>1.0.$VERSION</string>
+              <key>CFBundleName</key>
+              <string>极简习惯追踪</string> # App显示名称
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>LSRequiresIPhoneOS</key>
@@ -70,20 +75,19 @@ jobs:
           </plist>
           EOF
 
-      - name: 生成 App 入口文件
+      - name: 生成 App 入口文件 (SwiftUI兼容)
         run: |
           mkdir -p Habitapp/Classes
           cat > Habitapp/Classes/App.swift << 'EOF'
-          import UIKit
+          import SwiftUI
           @main
-          class HabitappApp: UIResponder, UIApplicationDelegate {
-              var window: UIWindow?
-              func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-                  window = UIWindow(frame: UIScreen.main.bounds)
-                  window?.rootViewController = UIViewController()
-                  window?.rootViewController?.view.backgroundColor = .white
-                  window?.makeKeyAndVisible()
-                  return true
+          struct HabitappApp: App {
+              var body: some Scene {
+                  WindowGroup {
+                      Text("极简习惯追踪 - 测试版")
+                          .font(.title)
+                          .foregroundColor(.black)
+                  }
               }
           }
           EOF
@@ -98,44 +102,62 @@ jobs:
           p12-file-base64: ${{ secrets.P12_FILE }}
           p12-password: ${{ secrets.P12_PASSWORD }}
 
-      - name: 安装描述文件
+      - name: 安装描述文件 (按UUID命名，确保Xcode能识别)
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
+          # 临时保存描述文件并提取UUID
+          TEMP_PROFILE=~/Library/MobileDevice/Provisioning\ Profiles/temp.mobileprovision
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$TEMP_PROFILE"
+          # 提取描述文件UUID
+          PROFILE_UUID=$(plutil -extract UUID xml1 -o - "$TEMP_PROFILE" | grep -oE '[0-9A-F-]+')
+          # 按UUID重命名并保存
+          mv "$TEMP_PROFILE" ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+          echo "描述文件安装完成，UUID: $PROFILE_UUID"
 
-      - name: 编译归档
+      - name: 编译归档 (自动匹配描述文件)
         run: |
           xcodebuild archive \
             -project Habitapp.xcodeproj \
             -scheme Habitapp \
             -destination 'generic/platform=iOS' \
             -archivePath ./build/Habitapp.xcarchive \
-            PROVISIONING_PROFILE_SPECIFIER=Habitapp \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            DEVELOPMENT_TEAM=6GMTCJDKPM \
+            ALLOW_TARGET_PLATFORM_SPECIALIZATION=NO \
             -verbose
 
-      - name: 导出 IPA
+      - name: 生成导出配置文件 (适配Ad Hoc分发)
         run: |
-          cat > ExportOptions.plist << 'EOF'
+          cat > ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <plist version="1.0">
           <dict>
               <key>method</key>
               <string>ad-hoc</string>
               <key>teamID</key>
-              <string>6GMTCJDKPM</string> <!-- 替换为你的Team ID -->
+              <string>6GMTCJDKPM</string>
               <key>provisioningProfiles</key>
               <dict>
-                  <key>com.yourteam.Habitapp</key> <!-- 替换为你的真实Bundle ID -->
+                  <key>com.hupanfeng.habit-tracker</key>
                   <string>Habitapp</string>
               </dict>
               <key>signingCertificate</key>
               <string>iPhone Distribution</string>
               <key>signingStyle</key>
               <string>manual</string>
+              <key>stripSwiftSymbols</key>
+              <true/>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
           </dict>
           </plist>
           EOF
 
+      - name: 导出 IPA
+        run: |
           xcodebuild -exportArchive \
             -archivePath ./build/Habitapp.xcarchive \
             -exportOptionsPlist ExportOptions.plist \
