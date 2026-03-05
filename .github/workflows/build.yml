@@ -38,7 +38,6 @@ jobs:
                 CODE_SIGN_IDENTITY: "iPhone Distribution"
                 CODE_SIGN_STYLE: Manual
                 DEVELOPMENT_TEAM: 6GMTCJDKPM
-                PROVISIONING_PROFILE_SPECIFIER: ""
           EOF
 
       - name: 生成 Info.plist (自动递增版本号)
@@ -109,7 +108,11 @@ jobs:
           PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
           echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$PROFILE_PATH"
           echo "描述文件已安装到: $PROFILE_PATH"
+          # 打印描述文件信息，用于调试
+          /usr/libexec/PlistBuddy -c 'Print :Name' /dev/stdin <<< $(security cms -D -i "$PROFILE_PATH")
+          /usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< $(security cms -D -i "$PROFILE_PATH")
 
+      # 关键修复：移除 PROVISIONING_PROFILE_SPECIFIER，让 Xcode 自动匹配
       - name: 编译归档 (自动匹配描述文件)
         run: |
           xcodebuild archive \
@@ -120,7 +123,6 @@ jobs:
             -configuration Release \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             DEVELOPMENT_TEAM=6GMTCJDKPM \
-            PROVISIONING_PROFILE_SPECIFIER="Habitapp" \
             ALLOW_TARGET_PLATFORM_SPECIALIZATION=NO \
             -verbose
 
@@ -134,15 +136,8 @@ jobs:
               <string>ad-hoc</string>
               <key>teamID</key>
               <string>6GMTCJDKPM</string>
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>com.hupanfeng.habit-tracker</key>
-                  <string>Habitapp</string>
-              </dict>
-              <key>signingCertificate</key>
-              <string>iPhone Distribution</string>
               <key>signingStyle</key>
-              <string>manual</string>
+              <string>automatic</string>
               <key>stripSwiftSymbols</key>
               <true/>
               <key>uploadBitcode</key>
