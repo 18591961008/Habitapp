@@ -19,9 +19,30 @@ jobs:
         run: |
           brew install xcodegen
 
+      # 新增步骤：提取描述文件UUID并设置为环境变量
+      - name: 提取描述文件UUID
+        id: get_profile_uuid
+        run: |
+          # 临时保存描述文件
+          TEMP_PROFILE=$(mktemp)
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$TEMP_PROFILE"
+          
+          # 提取UUID
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< $(security cms -D -i "$TEMP_PROFILE"))
+          # 提取描述文件名称
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' /dev/stdin <<< $(security cms -D -i "$TEMP_PROFILE"))
+          
+          # 设置为环境变量，后续步骤可直接使用
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
+          echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
+          
+          echo "提取到描述文件信息："
+          echo "UUID: $PROFILE_UUID"
+          echo "Name: $PROFILE_NAME"
+
       - name: 生成项目配置文件 (project.yml)
         run: |
-          cat > project.yml << 'EOF'
+          cat > project.yml << EOF
           name: Habitapp
           options:
             minimumDeploymentTarget: 15.0
@@ -38,6 +59,8 @@ jobs:
                 CODE_SIGN_IDENTITY: "iPhone Distribution"
                 CODE_SIGN_STYLE: Manual
                 DEVELOPMENT_TEAM: 6GMTCJDKPM
+                # 使用自动提取的UUID
+                PROVISIONING_PROFILE: "${{ env.PROFILE_UUID }}"
           EOF
 
       - name: 生成 Info.plist (自动递增版本号)
@@ -101,19 +124,15 @@ jobs:
           p12-file-base64: ${{ secrets.P12_FILE }}
           p12-password: ${{ secrets.P12_PASSWORD }}
 
-      - name: 安装描述文件 (修复版)
+      - name: 安装描述文件 (按UUID命名)
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          # 直接使用固定名称安装，避免UUID提取失败
-          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
+          # 使用自动提取的UUID作为文件名
+          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/${{ env.PROFILE_UUID }}.mobileprovision
           echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$PROFILE_PATH"
           echo "描述文件已安装到: $PROFILE_PATH"
-          # 打印描述文件信息，用于调试
-          /usr/libexec/PlistBuddy -c 'Print :Name' /dev/stdin <<< $(security cms -D -i "$PROFILE_PATH")
-          /usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< $(security cms -D -i "$PROFILE_PATH")
 
-      # 关键修复：移除 PROVISIONING_PROFILE_SPECIFIER，让 Xcode 自动匹配
-      - name: 编译归档 (自动匹配描述文件)
+      - name: 编译归档
         run: |
           xcodebuild archive \
             -project Habitapp.xcodeproj \
@@ -121,9 +140,6 @@ jobs:
             -destination 'generic/platform=iOS' \
             -archivePath ./build/Habitapp.xcarchive \
             -configuration Release \
-            CODE_SIGN_IDENTITY="iPhone Distribution" \
-            DEVELOPMENT_TEAM=6GMTCJDKPM \
-            ALLOW_TARGET_PLATFORM_SPECIALIZATION=NO \
             -verbose
 
       - name: 生成导出配置文件 (适配Ad Hoc分发)
@@ -136,8 +152,15 @@ jobs:
               <string>ad-hoc</string>
               <key>teamID</key>
               <string>6GMTCJDKPM</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.hupanfeng.habit-tracker</key>
+                  <string>${{ env.PROFILE_UUID }}</string>
+              </dict>
+              <key>signingCertificate</key>
+              <string>iPhone Distribution</string>
               <key>signingStyle</key>
-              <string>automatic</string>
+              <string>manual</string>
               <key>stripSwiftSymbols</key>
               <true/>
               <key>uploadBitcode</key>
