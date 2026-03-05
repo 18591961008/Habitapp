@@ -34,17 +34,17 @@ jobs:
                 - Habitapp/Classes
               settings:
                 INFOPLIST_FILE: Habitapp/Resources/Info.plist
-                PRODUCT_BUNDLE_IDENTIFIER: com.hupanfeng.habit-tracker # 统一为你的真实Bundle ID
+                PRODUCT_BUNDLE_IDENTIFIER: com.hupanfeng.habit-tracker
                 CODE_SIGN_IDENTITY: "iPhone Distribution"
                 CODE_SIGN_STYLE: Manual
-                DEVELOPMENT_TEAM: 6GMTCJDKPM # 固定Team ID
-                PROVISIONING_PROFILE_SPECIFIER: "" # 清空硬编码，自动匹配
+                DEVELOPMENT_TEAM: 6GMTCJDKPM
+                PROVISIONING_PROFILE_SPECIFIER: ""
           EOF
 
       - name: 生成 Info.plist (自动递增版本号)
         run: |
           mkdir -p Habitapp/Resources
-          VERSION=$(git rev-list --count HEAD) # 用Git提交次数作为版本号
+          VERSION=$(git rev-list --count HEAD)
           cat > Habitapp/Resources/Info.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -59,7 +59,7 @@ jobs:
               <key>CFBundleShortVersionString</key>
               <string>1.0.$VERSION</string>
               <key>CFBundleName</key>
-              <string>极简习惯追踪</string> # App显示名称
+              <string>极简习惯追踪</string>
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>LSRequiresIPhoneOS</key>
@@ -102,17 +102,13 @@ jobs:
           p12-file-base64: ${{ secrets.P12_FILE }}
           p12-password: ${{ secrets.P12_PASSWORD }}
 
-      - name: 安装描述文件 (按UUID命名，确保Xcode能识别)
+      - name: 安装描述文件 (修复版)
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          # 临时保存描述文件并提取UUID
-          TEMP_PROFILE=~/Library/MobileDevice/Provisioning\ Profiles/temp.mobileprovision
-          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$TEMP_PROFILE"
-          # 提取描述文件UUID
-          PROFILE_UUID=$(plutil -extract UUID xml1 -o - "$TEMP_PROFILE" | grep -oE '[0-9A-F-]+')
-          # 按UUID重命名并保存
-          mv "$TEMP_PROFILE" ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
-          echo "描述文件安装完成，UUID: $PROFILE_UUID"
+          # 直接使用固定名称安装，避免UUID提取失败
+          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$PROFILE_PATH"
+          echo "描述文件已安装到: $PROFILE_PATH"
 
       - name: 编译归档 (自动匹配描述文件)
         run: |
@@ -124,6 +120,7 @@ jobs:
             -configuration Release \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             DEVELOPMENT_TEAM=6GMTCJDKPM \
+            PROVISIONING_PROFILE_SPECIFIER="Habitapp" \
             ALLOW_TARGET_PLATFORM_SPECIALIZATION=NO \
             -verbose
 
