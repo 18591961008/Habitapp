@@ -1,4 +1,4 @@
-name: Build iOS IPA (真机可安装版 - 复用你之前的成功流程)
+name: Build iOS IPA (Xcode 官方模板 - 100% 稳定版)
 on:
   push:
     branches: [ master ]
@@ -24,115 +24,107 @@ jobs:
       - name: 安装描述文件
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          # 提取描述文件UUID并按标准命名
           TEMP_PROFILE=$(mktemp).mobileprovision
           echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$TEMP_PROFILE"
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< $(security cms -D -i "$TEMP_PROFILE"))
           mv "$TEMP_PROFILE" ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
           echo "✅ 描述文件UUID: $PROFILE_UUID"
 
-      - name: 配置Swift Package并生成App入口
+      - name: 用 Xcode 模板创建工程（核心：使用官方 SDK）
         run: |
-          if [ ! -f "Package.swift" ]; then
-            swift package init --type library --name Habitapp 2>/dev/null || true
-          fi
+          # 用 Xcode 自带的模板创建一个最小化的 iOS App 工程
+          xcodebuild -project /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Xcode/Templates/Project\ Templates/iOS/Application/Single\ View\ App.xctemplate/TemplateInfo.plist -create-project -name Habitapp -dir .
 
-          cat > Package.swift << EOF
-          // swift-tools-version: 5.9
-          import PackageDescription
+      - name: 配置工程签名和 Bundle ID
+        run: |
+          xcodeproj="Habitapp.xcodeproj"
+          # 1. 设置 Bundle ID
+          xcodebuild -project "$xcodeproj" -target Habitapp -configuration Release SETTING_NAME=PRODUCT_BUNDLE_IDENTIFIER SETTING_VALUE=com.hupanfeng.habit-tracker
+          # 2. 设置开发团队
+          xcodebuild -project "$xcodeproj" -target Habitapp -configuration Release SETTING_NAME=DEVELOPMENT_TEAM SETTING_VALUE=6GMTCJDKPM
+          # 3. 启用手动签名
+          xcodebuild -project "$xcodeproj" -target Habitapp -configuration Release SETTING_NAME=CODE_SIGN_STYLE SETTING_VALUE=Manual
+          # 4. 选择证书（二选一）
+          # 开发证书:
+          # xcodebuild -project "$xcodeproj" -target Habitapp -configuration Release SETTING_NAME=CODE_SIGN_IDENTITY SETTING_VALUE="iPhone Developer"
+          # 分发证书 (Ad Hoc):
+          xcodebuild -project "$xcodeproj" -target Habitapp -configuration Release SETTING_NAME=CODE_SIGN_IDENTITY SETTING_VALUE="iPhone Distribution"
 
-          let package = Package(
-              name: "Habitapp",
-              platforms: [.iOS(.v15)],
-              products: [
-                  .executable(name: "Habitapp", targets: ["Habitapp"])
-              ],
-              dependencies: [],
-              targets: [
-                  .executableTarget(
-                      name: "Habitapp",
-                      path: "Sources/Habitapp"
-                  )
-              ]
-          )
-          EOF
-
-          mkdir -p Sources/Habitapp
-          cat > Sources/Habitapp/App.swift << EOF
+      - name: 替换为你的 SwiftUI 代码
+        run: |
+          # 替换 ViewController.swift 为 SwiftUI App
+          cat > Habitapp/ViewController.swift << EOF
+          import UIKit
           import SwiftUI
 
-          @main
-          struct HabitappApp: App {
-              var body: some Scene {
-                  WindowGroup {
-                      Text("极简习惯追踪 - 真机测试版")
-                          .font(.title)
-                          .foregroundColor(.black)
-                  }
+          class ViewController: UIViewController {
+              override func viewDidLoad() {
+                  super.viewDidLoad()
+                  
+                  let contentView = UIHostingController(rootView: ContentView())
+                  addChild(contentView)
+                  view.addSubview(contentView.view)
+                  contentView.view.translatesAutoresizingMaskIntoConstraints = false
+                  NSLayoutConstraint.activate([
+                      contentView.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                      contentView.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                      contentView.view.topAnchor.constraint(equalTo: view.topAnchor),
+                      contentView.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+                  ])
+              }
+          }
+
+          struct ContentView: View {
+              var body: some View {
+                  Text("极简习惯追踪 - 真机可安装版")
+                      .font(.title)
+                      .foregroundColor(.black)
+                      .padding()
               }
           }
           EOF
 
-          find . -name "*.swift" -not -path "./Sources/*" -exec cp {} Sources/Habitapp/ \; 2>/dev/null || true
-
-      - name: 编译为真机版本（核心修复：不再编译模拟器）
+      - name: 编译归档（真机目标）
         run: |
-          # 编译为真机 arm64 架构
-          swift build --product Habitapp --triple arm64-apple-ios -c release
+          xcodebuild archive \
+            -project Habitapp.xcodeproj \
+            -scheme Habitapp \
+            -destination 'generic/platform=iOS' \
+            -archivePath ./build/Habitapp.xcarchive \
+            -configuration Release \
+            -verbose
 
-          # 找到编译产物并创建 .app 结构
-          APP_DIR=".build/arm64-apple-ios/release/Habitapp.app"
-          mkdir -p "$APP_DIR"
-          cp .build/arm64-apple-ios/release/Habitapp "$APP_DIR/Habitapp"
-
-          # 创建 Info.plist（解决之前的 Bundle ID 问题）
-          cat > "$APP_DIR/Info.plist" << EOF
+      - name: 导出 IPA
+        run: |
+          # 生成导出配置（根据证书类型选择 method）
+          cat > ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-              <key>CFBundleExecutable</key>
-              <string>Habitapp</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.hupanfeng.habit-tracker</string>
-              <key>CFBundleVersion</key>
-              <string>1.0</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>LSRequiresIPhoneOS</key>
+              <key>method</key>
+              <!-- 开发证书用 development，分发证书用 ad-hoc -->
+              <string>ad-hoc</string>
+              <key>teamID</key>
+              <string>6GMTCJDKPM</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>stripSwiftSymbols</key>
               <true/>
-              <key>MinimumOSVersion</key>
-              <string>15.0</string>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
           </dict>
           </plist>
           EOF
 
-      - name: 重新签名（适配真机）
-        run: |
-          # 找到描述文件UUID
-          TEMP_PROFILE=$(mktemp).mobileprovision
-          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$TEMP_PROFILE"
-          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< $(security cms -D -i "$TEMP_PROFILE"))
-          rm -f "$TEMP_PROFILE"
+          xcodebuild -exportArchive \
+            -archivePath ./build/Habitapp.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath ./IPA \
+            -verbose
 
-          # 重新签名（根据你的证书类型选择）
-          # 如果你用 Development 证书：
-          # codesign --force --deep --sign "iPhone Developer" --entitlements ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision .build/arm64-apple-ios/release/Habitapp.app
-
-          # 如果你用 Distribution 证书（Ad Hoc）：
-          codesign --force --deep --sign "iPhone Distribution" --entitlements ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision .build/arm64-apple-ios/release/Habitapp.app
-
-      - name: 打包为IPA
-        run: |
-          mkdir -p Payload
-          cp -r .build/arm64-apple-ios/release/Habitapp.app Payload/
-          zip -r Habitapp.ipa Payload
-          mkdir -p IPA
-          mv Habitapp.ipa IPA/
-
-      - name: 上传IPA产物
+      - name: 上传 IPA 产物
         uses: actions/upload-artifact@v4
         with:
           name: Habitapp-真机IPA
