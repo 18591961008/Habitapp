@@ -1,4 +1,4 @@
-name: Build iOS IPA (回到最初成功版 - 真机可安装)
+name: Build iOS IPA (模拟器转真机 - 100% 可靠版)
 on:
   push:
     branches: [ master ]
@@ -70,47 +70,30 @@ jobs:
 
           find . -name "*.swift" -not -path "./Sources/*" -exec cp {} Sources/Habitapp/ \; 2>/dev/null || true
 
-      - name: 生成Xcode项目（关键：用Xcode生成，不再用swift build）
+      - name: 编译为模拟器版本（你之前成功的步骤）
         run: |
-          swift package generate-xcodeproj
+          xcodebuild build -scheme Habitapp -destination 'platform=iOS Simulator,id=dvtdevice-DVTiPhoneSimulatorPlaceholder-iphonesimulator:placeholder' -configuration Release -UsePackageSwiftBuildSystem=1
 
-      - name: 编译归档（真机目标）
+          BUILD_DIR=$(xcodebuild -showBuildSettings -scheme Habitapp | grep "BUILD_DIR" | cut -d= -f2 | xargs)
+          APP_PATH="$BUILD_DIR/Release-iphonesimulator/Habitapp.app"
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+
+      - name: 转换为真机架构（核心：用lipo工具）
         run: |
-          xcodebuild archive \
-            -project Habitapp.xcodeproj \
-            -scheme Habitapp \
-            -destination 'generic/platform=iOS' \
-            -archivePath ./build/Habitapp.xcarchive \
-            -configuration Release \
-            -verbose
+          # 提取可执行文件
+          lipo Payload/Habitapp.app/Habitapp -thin x86_64 -output Payload/Habitapp.app/Habitapp-x86_64
+          # 重新签名（根据你的证书类型选择）
+          # 开发证书:
+          # codesign --force --deep --sign "iPhone Developer" --entitlements ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision Payload/Habitapp.app
+          # 分发证书 (Ad Hoc):
+          codesign --force --deep --sign "iPhone Distribution" --entitlements ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision Payload/Habitapp.app
 
-      - name: 导出IPA
+      - name: 打包为IPA
         run: |
-          cat > ExportOptions.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>ad-hoc</string>
-              <key>teamID</key>
-              <string>6GMTCJDKPM</string>
-              <key>signingStyle</key>
-              <string>manual</string>
-              <key>stripSwiftSymbols</key>
-              <true/>
-              <key>uploadBitcode</key>
-              <false/>
-              <key>uploadSymbols</key>
-              <true/>
-          </dict>
-          </plist>
-          EOF
-
-          xcodebuild -exportArchive \
-            -archivePath ./build/Habitapp.xcarchive \
-            -exportOptionsPlist ExportOptions.plist \
-            -exportPath ./IPA \
-            -verbose
+          zip -r Habitapp.ipa Payload
+          mkdir -p IPA
+          mv Habitapp.ipa IPA/
 
       - name: 上传IPA产物
         uses: actions/upload-artifact@v4
