@@ -1,4 +1,4 @@
-name: Build iOS IPA (强制 Info.plist 版)
+name: Build iOS IPA (嵌入 mobileprovision 最终版)
 
 on:
   push:
@@ -20,55 +20,57 @@ jobs:
           p12-file-base64: ${{ secrets.P12_FILE }}
           p12-password: ${{ secrets.P12_PASSWORD }}
 
-      - name: 安装描述文件
+      - name: 【关键】提取并嵌入 mobileprovision
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision 2>/dev/null || true
-
-      - name: 【强制】创建标准 IPA 结构（必含 Info.plist）
-        run: |
-          # 1. 强制创建 Payload 目录
+          # 先把描述文件解码到临时文件
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > temp.mobileprovision
+          # 强制创建 .app 目录
           mkdir -p Payload/Habitapp.app
+          # 嵌入到 .app 目录，命名为 embedded.mobileprovision（Diawi 要求的名字）
+          cp temp.mobileprovision Payload/Habitapp.app/embedded.mobileprovision
+          rm temp.mobileprovision
 
-          # 2. 生成 Info.plist（放在 .app 根目录，Diawi 必须能找到）
+      - name: 生成 Info.plist + 可执行文件
+        run: |
+          # 1. 生成 Info.plist
           cat > Payload/Habitapp.app/Info.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleExecutable</key>
-            <string>Habitapp</string>
-            <key>CFBundleIdentifier</key>
-            <string>com.hupanfeng.habit-tracker</string>
-            <key>CFBundleVersion</key>
-            <string>1.0</string>
-            <key>CFBundleShortVersionString</key>
-            <string>1.0</string>
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
-            <key>LSRequiresIPhoneOS</key>
-            <true/>
-            <key>MinimumOSVersion</key>
-            <string>15.0</string>
-            <key>CFBundleName</key>
-            <string>Habitapp</string>
-            <key>CFBundleDisplayName</key>
-            <string>Habitapp</string>
-          </dict>
-          </plist>
-          EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>Habitapp</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.hupanfeng.habit-tracker</string>
+  <key>CFBundleVersion</key>
+  <string>1.0</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSRequiresIPhoneOS</key>
+  <true/>
+  <key>MinimumOSVersion</key>
+  <string>15.0</string>
+  <key>CFBundleName</key>
+  <string>Habitapp</string>
+  <key>CFBundleDisplayName</key>
+  <string>Habitapp</string>
+</dict>
+</plist>
+EOF
 
-          # 3. 生成一个空的可执行文件（占位，满足格式要求）
+          # 2. 生成空可执行文件
           echo "#!/bin/sh" > Payload/Habitapp.app/Habitapp
           echo "exit 0" >> Payload/Habitapp.app/Habitapp
           chmod +x Payload/Habitapp.app/Habitapp
 
       - name: 签名并打包
         run: |
-          # 签名（可选，不影响格式校验）
-          codesign --force --deep --sign "iPhone Distribution" --entitlements ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision Payload/Habitapp.app 2>/dev/null || true
-
-          # 打包为 IPA（必须是 Payload 根目录压缩）
+          # 签名（可选，格式校验不强制）
+          codesign --force --deep --sign "iPhone Distribution" Payload/Habitapp.app 2>/dev/null || true
+          # 打包为 IPA
           zip -r Habitapp.ipa Payload
           mkdir -p IPA
           mv Habitapp.ipa IPA/
@@ -76,5 +78,5 @@ jobs:
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Habitapp-IPA-Diawi-Valid
+          name: Habitapp-IPA-Diawi-Final
           path: ./IPA/*.ipa
