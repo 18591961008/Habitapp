@@ -32,31 +32,31 @@ jobs:
 
           # 2. 生成 Info.plist（放在 .app 根目录，Diawi 必须能找到）
           cat > Payload/Habitapp.app/Info.plist << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key>
-  <string>Habitapp</string>
-  <key>CFBundleIdentifier</key>
-  <string>com.hupanfeng.habit-tracker</string>
-  <key>CFBundleVersion</key>
-  <string>1.0</string>
-  <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>LSRequiresIPhoneOS</key>
-  <true/>
-  <key>MinimumOSVersion</key>
-  <string>15.0</string>
-  <key>CFBundleName</key>
-  <string>Habitapp</string>
-  <key>CFBundleDisplayName</key>
-  <string>Habitapp</string>
-</dict>
-</plist>
-EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>Habitapp</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.hupanfeng.habit-tracker</string>
+            <key>CFBundleVersion</key>
+            <string>1.0</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.0</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSRequiresIPhoneOS</key>
+            <true/>
+            <key>MinimumOSVersion</key>
+            <string>15.0</string>
+            <key>CFBundleName</key>
+            <string>Habitapp</string>
+            <key>CFBundleDisplayName</key>
+            <string>Habitapp</string>
+          </dict>
+          </plist>
+          EOF
 
           # 3. 生成一个空的可执行文件（占位，满足格式要求）
           echo "#!/bin/sh" > Payload/Habitapp.app/Habitapp
