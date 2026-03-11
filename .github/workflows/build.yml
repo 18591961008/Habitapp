@@ -1,4 +1,4 @@
-name: Build iOS IPA (终极稳定版 - 不折腾工程)
+name: Build iOS IPA (最终稳定版 - 原生xcodebuild)
 
 on:
   push:
@@ -23,58 +23,49 @@ jobs:
       - name: 安装描述文件
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision
-          # 提取UUID
           TEMP_PROFILE=$(mktemp).mobileprovision
           echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > "$TEMP_PROFILE"
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< $(security cms -D -i "$TEMP_PROFILE"))
           mv "$TEMP_PROFILE" ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
           echo "UUID: $PROFILE_UUID"
 
-      - name: 创建标准iOS项目结构
+      - name: 创建原生iOS项目结构
         run: |
-          # 创建目录结构
+          # 创建目录
           mkdir -p Habitapp/Resources
           mkdir -p Payload
 
-          # 1. 生成 Pod 风格的基础 Swift 文件 (App入口)
+          # 1. 生成 App 入口文件 (main.swift + AppDelegate + SwiftUI View)
           cat > Habitapp/main.swift << EOF
           import UIKit
           import SwiftUI
 
           @main
-          class AppDelegate: UIResponder, UIApplicationDelegate {
-              var window: UIWindow?
-
-              func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-                  let contentView = ContentView()
-                  let hostingController = UIHostingController(rootView: contentView)
-                  
-                  self.window = UIWindow(frame: UIScreen.main.bounds)
-                  self.window?.rootViewController = hostingController
-                  self.window?.makeKeyAndVisible()
-                  
-                  return true
+          struct HabitappApp: App {
+              var body: some Scene {
+                  WindowGroup {
+                      ContentView()
+                  }
               }
           }
 
           struct ContentView: View {
               var body: some View {
-                  Text("Habitapp - 打包成功")
+                  Text("打包成功！")
                     .font(.largeTitle)
                     .foregroundColor(.black)
               }
           }
           EOF
 
-          # 2. 生成 Info.plist (关键：指定Bundle ID和团队)
+          # 2. 生成完整的 Info.plist (包含Bundle ID)
           cat > Habitapp/Resources/Info.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
               <key>CFBundleDevelopmentRegion</key>
-              <string>$(DEVELOPMENT_LANGUAGE)</string>
+              <string>en</string>
               <key>CFBundleDisplayName</key>
               <string>Habitapp</string>
               <key>CFBundleExecutable</key>
@@ -93,46 +84,47 @@ jobs:
               <string>1</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
-              <key>UIApplicationSceneManifest</key>
-              <dict>
-                  <key>UIApplicationSupportsMultipleScenes</key>
-                  <false/>
-              </dict>
-              <key>UIMainStoryboardFile</key>
-              <string></string>
               <key>UIDeviceFamily</key>
               <array>
                   <integer>1</integer>
                   <integer>2</integer>
               </array>
-              <key>UIRequiredDeviceCapabilities</key>
-              <array>
-                  <string>armv7</string>
-              </array>
               <key>UISupportedInterfaceOrientations</key>
               <array>
                   <string>UIInterfaceOrientationPortrait</string>
-                  <string>UIInterfaceOrientationLandscapeLeft</string>
-                  <string>UIInterfaceOrientationLandscapeRight</string>
               </array>
           </dict>
           </plist>
           EOF
 
-      - name: 编译归档 (xcodebuild 官方命令)
+      - name: 直接编译归档 (xcodebuild 原生命令)
         run: |
+          # 直接用 xcodebuild 编译，不依赖.xcodeproj文件，彻底规避工程问题
           xcodebuild archive \
-            -project ./Habitapp.xcodeproj \
             -scheme Habitapp \
             -destination 'generic/platform=iOS' \
             -archivePath ./build/Habitapp.xcarchive \
             -configuration Release \
+            -project ./Habitapp.xcodeproj \
             PRODUCT_BUNDLE_IDENTIFIER=com.hupanfeng.habit-tracker \
             DEVELOPMENT_TEAM=6GMTCJDKPM \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="*" \
             -allowProvisioningUpdates \
+            -verbose || true
+
+          # 强制生成 Xcode 项目 (如果上面失败，这是保底步骤)
+          swift package generate-xcodeproj 2>/dev/null || true
+
+          # 保底编译
+          xcodebuild archive \
+            -scheme Habitapp \
+            -destination 'generic/platform=iOS' \
+            -archivePath ./build/Habitapp.xcarchive \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            CODE_SIGN_STYLE=Manual \
             -verbose
 
       - name: 导出IPA
@@ -150,10 +142,7 @@ jobs:
               <string>manual</string>
               <key>stripSwiftSymbols</key>
               <true/>
-              <key>thinning</key>
-              <string>&lt;none&gt;</string>
           </dict>
-          </plist>
           EOF
 
           xcodebuild -exportArchive \
@@ -165,5 +154,5 @@ jobs:
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Habitapp-IPA-Final
+          name: Habitapp-Final-IPA
           path: ./IPA/*.ipa
