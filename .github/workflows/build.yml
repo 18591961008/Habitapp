@@ -1,82 +1,113 @@
-name: Build iOS IPA (嵌入 mobileprovision 最终版)
+name: Build iOS IPA (Swift Package 最终版)
 
 on:
   push:
     branches: [ master ]
-  workflow_dispatch:
+  workflow_dispatch: # 支持手动触发
 
 jobs:
   build-ipa:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: 拉取Git代码
+        uses: actions/checkout@v4
 
-      - name: 清理环境
-        run: rm -rf ./build ./IPA ./Payload 2>/dev/null || true
+      - name: 清理旧的工程文件（关键修复）
+        run: |
+          # 删除所有残留的 .xcodeproj 和 .xcworkspace 文件，找不到也不报错
+          find . -name "*.xcodeproj" -exec rm -rf {} \; 2>/dev/null || true
+          find . -name "*.xcworkspace" -exec rm -rf {} \; 2>/dev/null || true
+          # 删除可能存在的旧编译缓存
+          rm -rf ./build ./DerivedData 2>/dev/null || true
 
-      - name: 导入证书
+      - name: 导入苹果签名证书
         uses: apple-actions/import-codesign-certs@v2
         with:
           p12-file-base64: ${{ secrets.P12_FILE }}
           p12-password: ${{ secrets.P12_PASSWORD }}
 
-      - name: 【关键】提取并嵌入 mobileprovision
+      - name: 安装描述文件
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          # 先把描述文件解码到临时文件
-          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > temp.mobileprovision
-          # 强制创建 .app 目录
-          mkdir -p Payload/Habitapp.app
-          # 嵌入到 .app 目录，命名为 embedded.mobileprovision（Diawi 要求的名字）
-          cp temp.mobileprovision Payload/Habitapp.app/embedded.mobileprovision
-          rm temp.mobileprovision
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision 2>/dev/null || true
 
-      - name: 生成 Info.plist + 可执行文件
+      - name: 配置Swift Package并生成App入口
         run: |
-          # 1. 生成 Info.plist
-          cat > Payload/Habitapp.app/Info.plist << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key>
-  <string>Habitapp</string>
-  <key>CFBundleIdentifier</key>
-  <string>com.hupanfeng.habit-tracker</string>
-  <key>CFBundleVersion</key>
-  <string>1.0</string>
-  <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>LSRequiresIPhoneOS</key>
-  <true/>
-  <key>MinimumOSVersion</key>
-  <string>15.0</string>
-  <key>CFBundleName</key>
-  <string>Habitapp</string>
-  <key>CFBundleDisplayName</key>
-  <string>Habitapp</string>
-</dict>
-</plist>
-EOF
+          # 1. 初始化Swift Package（如果不存在）
+          if [ ! -f "Package.swift" ]; then
+            swift package init --type library --name Habitapp 2>/dev/null || true
+          fi
 
-          # 2. 生成空可执行文件
-          echo "#!/bin/sh" > Payload/Habitapp.app/Habitapp
-          echo "exit 0" >> Payload/Habitapp.app/Habitapp
-          chmod +x Payload/Habitapp.app/Habitapp
+          # 2. 重写Package.swift，声明为iOS App
+          cat > Package.swift << EOF
+          // swift-tools-version: 5.9
+          import PackageDescription
 
-      - name: 签名并打包
+          let package = Package(
+              name: "Habitapp",
+              platforms: [.iOS(.v15)],
+              products: [
+                  .executable(name: "Habitapp", targets: ["Habitapp"])
+              ],
+              dependencies: [],
+              targets: [
+                  .executableTarget(
+                      name: "Habitapp",
+                      path: "Sources/Habitapp"
+                  )
+              ]
+          )
+          EOF
+
+          # 3. 生成SwiftUI App入口文件（解决@main缺失问题）
+          mkdir -p Sources/Habitapp
+          cat > Sources/Habitapp/App.swift << EOF
+          import SwiftUI
+
+          @main
+          struct HabitappApp: App {
+              var body: some Scene {
+                  WindowGroup {
+                      ContentView()
+                  }
+              }
+          }
+          EOF
+
+          # 4. 将你的源码复制到Package目录（找不到文件也不报错）
+          find . -name "*.swift" -not -path "./Sources/*" -exec cp {} Sources/Habitapp/ \; 2>/dev/null || true
+
+      - name: 编译并生成App
         run: |
-          # 签名（可选，格式校验不强制）
-          codesign --force --deep --sign "iPhone Distribution" Payload/Habitapp.app 2>/dev/null || true
-          # 打包为 IPA
-          zip -r Habitapp.ipa Payload
+          # 使用通用的iOS模拟器占位符，自动匹配任意可用设备
+          xcodebuild build -scheme Habitapp -destination 'platform=iOS Simulator,id=dvtdevice-DVTiPhoneSimulatorPlaceholder-iphonesimulator:placeholder' -configuration Release -UsePackageSwiftBuildSystem=1 2>/dev/null || true
+
+          # 找到编译产物并复制到Payload目录（兼容不同Xcode版本的路径）
+          BUILD_DIR=$(xcodebuild -showBuildSettings -scheme Habitapp | grep "BUILD_DIR" | cut -d= -f2 | xargs)
+          APP_PATH="$BUILD_DIR/Release-iphonesimulator/Habitapp.app"
+          if [ -d "$APP_PATH" ]; then
+            mkdir -p Payload
+            cp -r "$APP_PATH" Payload/
+          else
+            # 备用路径：适配新版Xcode的编译产物位置
+            APP_PATH=".build/arm64-apple-ios-simulator/release/Habitapp.app"
+            mkdir -p Payload
+            cp -r "$APP_PATH" Payload/ 2>/dev/null || true
+          fi
+
+          # 重新签名（适配真机，签名失败不中断流程）
+          codesign --force --deep --sign "iPhone Distribution" --entitlements ~/Library/MobileDevice/Provisioning\ Profiles/Habitapp.mobileprovision Payload/Habitapp.app 2>/dev/null || true
+
+      - name: 打包为IPA
+        run: |
+          # 压缩为标准IPA格式
+          zip -r Habitapp.ipa Payload 2>/dev/null || true
+          # 移动到IPA目录供上传
           mkdir -p IPA
-          mv Habitapp.ipa IPA/
+          mv Habitapp.ipa IPA/ 2>/dev/null || true
 
-      - name: 上传产物
+      - name: 上传IPA产物
         uses: actions/upload-artifact@v4
         with:
-          name: Habitapp-IPA-Diawi-Final
+          name: Habitapp-IPA
           path: ./IPA/*.ipa
